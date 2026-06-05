@@ -1,0 +1,19 @@
+{
+  "name": "ocp-lifecycle-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension that highlights the OpenShift Life Cycle Dates table by deadline proximity",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tsubasaxZZZ/ocp-lifecycle-extension.git"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "build": "bash scripts/build.sh",
+    "check:structure": "node scripts/check-structure.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

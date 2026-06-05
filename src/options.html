@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Lifecycle Highlighter for OpenShift</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 13px;
+      color: #222;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 24px;
+    }
+    .card {
+      max-width: 620px;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 20px 24px;
+    }
+    h1 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+    h2 {
+      font-size: 13px; font-weight: 600; color: #555;
+      margin: 20px 0 10px; padding-top: 14px; border-top: 1px solid #eee;
+    }
+    .row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .swatch {
+      width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0;
+      border: 1px solid rgba(0,0,0,0.25);
+    }
+    .label { width: 70px; flex-shrink: 0; }
+    .value { min-width: 90px; text-align: right; font-weight: 600; }
+    .hint { color: #888; flex: 1; }
+    input[type="range"] { flex: 1; }
+    .error { display: none; color: #a32d2d; margin: 6px 0 0; }
+    .checks label { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+    th { color: #666; font-weight: 600; }
+    .badge {
+      display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 8px;
+      font-size: 10px; font-weight: 600; background: rgba(255,255,255,0.65);
+      text-decoration: none; white-space: nowrap;
+    }
+    .strike { text-decoration: line-through; }
+    .c-expired { background: #d3d1c7; color: #2c2c2a; }
+    .c-danger { background: #f7c1c1; color: #501313; }
+    .c-warn { background: #fac775; color: #412402; }
+    .c-ok { background: #c0dd97; color: #173404; }
+    .footer {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 20px; padding-top: 14px; border-top: 1px solid #eee;
+    }
+    button {
+      font-size: 13px; padding: 6px 14px; border-radius: 6px;
+      border: 1px solid #ccc; background: #fff; cursor: pointer;
+    }
+    button:hover { background: #f0f0f0; }
+    #save-btn { font-weight: 600; }
+    #save-state { color: #888; font-size: 12px; margin-right: 10px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1 data-i18n="optTitle"></h1>
+
+    <h2 data-i18n="optThresholds"></h2>
+    <div class="row">
+      <span class="swatch c-danger"></span>
+      <label class="label" for="danger" data-i18n="optDanger"></label>
+      <input type="range" id="danger" min="7" max="365" step="1">
+      <span class="value"><span id="danger-out"></span><span data-i18n="optWithinDaysSuffix"></span></span>
+    </div>
+    <div class="row">
+      <span class="swatch c-warn"></span>
+      <label class="label" for="warn" data-i18n="optWarn"></label>
+      <input type="range" id="warn" min="14" max="730" step="1">
+      <span class="value"><span id="warn-out"></span><span data-i18n="optWithinDaysSuffix"></span></span>
+    </div>
+    <div class="row">
+      <span class="swatch c-ok"></span>
+      <span class="label" data-i18n="optOk"></span>
+      <span class="hint" data-i18n="optOkAuto"></span>
+    </div>
+    <div class="row">
+      <span class="swatch c-expired"></span>
+      <span class="label" data-i18n="optExpired"></span>
+      <span class="hint" data-i18n="optExpiredAuto"></span>
+    </div>
+    <p class="error" id="thresh-error" data-i18n="optThresholdError"></p>
+
+    <h2 data-i18n="optDisplay"></h2>
+    <div class="checks">
+      <label><input type="checkbox" id="opt-badge"><span data-i18n="optShowBadge"></span></label>
+      <label><input type="checkbox" id="opt-legend"><span data-i18n="optShowLegend"></span></label>
+      <label><input type="checkbox" id="opt-strike"><span data-i18n="optStrikeExpired"></span></label>
+    </div>
+
+    <h2><span data-i18n="optPreview"></span> <span style="font-weight:400;color:#999;">(<span data-i18n="optPreviewToday"></span>: <span id="today-out"></span>)</span></h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Version</th>
+          <th>General availability</th>
+          <th>Full support ends</th>
+          <th>Maintenance support ends</th>
+        </tr>
+      </thead>
+      <tbody id="preview-body"></tbody>
+    </table>
+
+    <div class="footer">
+      <button id="reset-btn" data-i18n="optReset"></button>
+      <div>
+        <span id="save-state"></span>
+        <button id="save-btn" data-i18n="optSave"></button>
+      </div>
+    </div>
+  </div>
+  <script src="lib.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const lib = require("../src/lib.js");
+
+test("parseDateFromText: full English month", () => {
+  const d = lib.parseDateFromText("March 17, 2026");
+  assert.equal(d.getFullYear(), 2026);
+  assert.equal(d.getMonth(), 2);
+  assert.equal(d.getDate(), 17);
+});
+
+test("parseDateFromText: abbreviated month", () => {
+  const d = lib.parseDateFromText("Feb 3, 2026");
+  assert.equal(d.getMonth(), 1);
+  assert.equal(d.getDate(), 3);
+});
+
+test("parseDateFromText: abbreviated month with period and Sept", () => {
+  assert.ok(lib.parseDateFromText("Sep. 17, 2025"));
+  assert.ok(lib.parseDateFromText("Sept 17, 2025"));
+});
+
+test("parseDateFromText: ISO format", () => {
+  const d = lib.parseDateFromText("2027-08-03");
+  assert.equal(d.getFullYear(), 2027);
+  assert.equal(d.getMonth(), 7);
+  assert.equal(d.getDate(), 3);
+});
+
+test("parseDateFromText: date embedded with footnote marker", () => {
+  const d = lib.parseDateFromText("October 21, 2025 [1]");
+  assert.equal(d.getDate(), 21);
+});
+
+test("parseDateFromText: Japanese format", () => {
+  const d = lib.parseDateFromText("2026年2月3日");
+  assert.equal(d.getFullYear(), 2026);
+  assert.equal(d.getMonth(), 1);
+  assert.equal(d.getDate(), 3);
+  const d2 = lib.parseDateFromText("2025年10月21日");
+  assert.equal(d2.getMonth(), 9);
+  assert.equal(d2.getDate(), 21);
+});
+
+test("parseDateFromText: Japanese non-dates return null", () => {
+  assert.equal(lib.parseDateFromText("該当なし"), null);
+  assert.equal(lib.parseDateFromText("GA of 4.22 + 3 Months"), null);
+});
+
+test("parseDateFromText: non-dates return null", () => {
+  assert.equal(lib.parseDateFromText("N/A"), null);
+  assert.equal(lib.parseDateFromText("GA of 4.22 + 3 Months"), null);
+  assert.equal(lib.parseDateFromText(""), null);
+  assert.equal(lib.parseDateFromText(null), null);
+  assert.equal(lib.parseDateFromText("4.20"), null);
+});
+
+test("daysUntil: basic deltas ignore time of day", () => {
+  const today = new Date(2026, 5, 5, 23, 59);
+  assert.equal(lib.daysUntil(new Date(2026, 5, 5), today), 0);
+  assert.equal(lib.daysUntil(new Date(2026, 5, 6), today), 1);
+  assert.equal(lib.daysUntil(new Date(2026, 5, 4), today), -1);
+  assert.equal(lib.daysUntil(new Date(2027, 5, 5), today), 365);
+});
+
+test("classify: boundaries", () => {
+  const s = { dangerDays: 90, warnDays: 180 };
+  assert.equal(lib.classify(-1, s), "expired");
+  assert.equal(lib.classify(0, s), "danger");
+  assert.equal(lib.classify(90, s), "danger");
+  assert.equal(lib.classify(91, s), "warn");
+  assert.equal(lib.classify(180, s), "warn");
+  assert.equal(lib.classify(181, s), "ok");
+});
+
+test("isLifecycleHeaderSet: matches the real page headers", () => {
+  const headers = [
+    "Version",
+    "General availability",
+    "Full support",
+    "Maintenance support",
+    "Extended Update Support Add-On - Term 1",
+    "Extended Update Support Add-On - Term 2",
+    "Extended Update Support Add-On - Term 3",
+    "Extended life phase"
+  ];
+  assert.ok(lib.isLifecycleHeaderSet(headers));
+});
+
+test("isLifecycleHeaderSet: matches the Japanese page headers", () => {
+  const headers = [
+    "バージョン",
+    "一般提供の開始 (GA) 日",
+    "フルサポート",
+    "メンテナンスサポート",
+    "Extended Update Support Add-On - Term 1",
+    "Extended Update Support Add-On - Term 2",
+    "Extended Update Support Add-On - Term 3",
+    "延長ライフフェーズ"
+  ];
+  assert.ok(lib.isLifecycleHeaderSet(headers));
+});
+
+test("isLifecycleHeaderSet: rejects unrelated tables", () => {
+  assert.equal(lib.isLifecycleHeaderSet(["Software Classification", "Provided Tools"]), false);
+  assert.equal(lib.isLifecycleHeaderSet([]), false);
+});
+
+test("isExcludedLabel: GA and version labels excluded", () => {
+  assert.ok(lib.isExcludedLabel("general-availability"));
+  assert.ok(lib.isExcludedLabel("Version"));
+  assert.equal(lib.isExcludedLabel("full-support"), false);
+  assert.equal(lib.isExcludedLabel("maintenance-support"), false);
+  assert.equal(lib.isExcludedLabel("extended-update-support-add-on---term-1"), false);
+  assert.equal(lib.isExcludedLabel("extended-life-phase"), false);
+});
+
+test("isExcludedColumn: GA and version columns excluded", () => {
+  assert.ok(lib.isExcludedColumn("General availability"));
+  assert.ok(lib.isExcludedColumn("Version"));
+  assert.equal(lib.isExcludedColumn("Full support"), false);
+  assert.equal(lib.isExcludedColumn("Maintenance support"), false);
+});
+
+test("isExcludedLabel/Column: Japanese GA and version excluded", () => {
+  assert.ok(lib.isExcludedLabel("一般提供の開始-(ga)-日"));
+  assert.ok(lib.isExcludedLabel("バージョン"));
+  assert.equal(lib.isExcludedLabel("フルサポート"), false);
+  assert.equal(lib.isExcludedLabel("メンテナンスサポート"), false);
+  assert.equal(lib.isExcludedLabel("延長ライフフェーズ"), false);
+  assert.ok(lib.isExcludedColumn("一般提供の開始 (GA) 日"));
+  assert.ok(lib.isExcludedColumn("バージョン"));
+});
+
+test("sanitizeSettings: defaults and clamping", () => {
+  const d = lib.sanitizeSettings(undefined);
+  assert.deepEqual(d, lib.DEFAULTS);
+
+  const s = lib.sanitizeSettings({ dangerDays: "200", warnDays: 100 });
+  assert.equal(s.dangerDays, 200);
+  assert.equal(s.warnDays, 201);
+
+  const junk = lib.sanitizeSettings({ dangerDays: "abc", warnDays: -5, showBadge: 0 });
+  assert.equal(junk.dangerDays, lib.DEFAULTS.dangerDays);
+  assert.equal(junk.warnDays, lib.DEFAULTS.dangerDays + 1);
+  assert.equal(junk.showBadge, false);
+});

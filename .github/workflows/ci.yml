@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Verify manifest is valid JSON and locales exist
+        run: |
+          node -e "
+            const m = require('./manifest.json');
+            const en = require('./_locales/en/messages.json');
+            const ja = require('./_locales/ja/messages.json');
+            if (m.manifest_version !== 3) throw new Error('manifest_version must be 3');
+            const enKeys = Object.keys(en).sort().join(',');
+            const jaKeys = Object.keys(ja).sort().join(',');
+            if (enKeys !== jaKeys) throw new Error('locale keys mismatch between en and ja');
+            console.log('manifest + locales ok, version', m.version);
+          "
+
+      - name: Build extension zip
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: extension-zip
+          path: dist/*.zip
+          retention-days: 30
