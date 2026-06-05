@@ -7,7 +7,9 @@ OpenShift Container Platform のライフサイクルページにある「Life C
 
 ## 対象
 
-- URL: `https://access.redhat.com/support/policy/updates/openshift`
+- URL:
+  - `https://access.redhat.com/support/policy/updates/openshift`(OpenShift単体ページ)
+  - `https://access.redhat.com/product-life-cycles*`(全製品ページ。RHEL等、表示中の全製品の表を装飾)
   - 言語切替は `rh_locale` Cookie で行われURLは不変。英語・日本語表示の両方に対応
     (日本語はヘッダー・`data-label`・日付形式がローカライズされる)
 - ブラウザ: Chrome (Manifest V3)。Edge は同一コードで動作見込み。Firefox は将来対応
@@ -57,7 +59,12 @@ OpenShift Container Platform のライフサイクルページにある「Life C
 - 通常のCSSは Shadow DOM に届かないため、**スタイルは各 Shadow Root に
   `<style data-ocp-lh>` を注入**する
 - `MutationObserver` を document と各 Shadow Root の両方に張り、Litの再描画後に再適用
-- 日付パース対応形式: `March 17, 2026` / `Mar 17, 2026` / `2026-03-17` / `2026年3月17日`。
+- **期限の抽出は2段構え**: セル内に `<pfe-datetime datetime="...">`(全製品ページ)が
+  あれば `.end-date` コンテナ内の datetime 属性(ISO、言語非依存)を使う。
+  期間の終了側が `Ongoing`(datetime なし)のセルはスキップ。
+  なければテキストをパース(OpenShift単体ページ)。対応形式:
+  `March 17, 2026` / `Mar 17, 2026` / `2026-03-17` / `2026年3月17日`。
+  テキスト内に複数の日付がある場合は最後尾=終了日を採用。
   判定はユーザーのローカルタイムゾーンの「今日」基準
 - フォールバックとして、Shadow DOM を使わない素の table(ヘッダーテキスト判定)にも対応
 - 描画元データは Red Hat lifecycle API:
@@ -125,7 +132,8 @@ Chrome Web Store API のクレデンシャル([取得手順](https://github.com/
 
 ## スコープ外(将来候補)
 
-- Red Hat 全製品の product-life-cycles ページ対応(汎用パーサー)
+- ライフサイクル表のヘッダー構成が大きく異なる製品への対応
+  (現状は General availability / Full support / Maintenance support 列を持つ表のみ検知)
 - 「自社のEUS契約有無」を設定し、実質EOL列を強調する機能
 - 期限接近時の通知(アイコンバッジ / 定期チェック)
 - Firefox 対応

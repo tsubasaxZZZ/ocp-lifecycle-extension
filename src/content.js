@@ -101,8 +101,21 @@
     return msg("badgeDaysLeft", [String(diff)]);
   }
 
+  function cellDeadline(cell) {
+    var endContainer = cell.querySelector(".end-date");
+    if (endContainer) {
+      var endDt = endContainer.querySelector("pfe-datetime[datetime]");
+      return endDt ? OCPLH.parseDateTimeAttr(endDt.getAttribute("datetime")) : null;
+    }
+    var dts = cell.querySelectorAll("pfe-datetime[datetime]");
+    if (dts.length > 0) {
+      return OCPLH.parseDateTimeAttr(dts[dts.length - 1].getAttribute("datetime"));
+    }
+    return OCPLH.parseDeadlineFromText(cell.textContent || "");
+  }
+
   function decorateCell(cell, today) {
-    var date = OCPLH.parseDateFromText(cell.textContent || "");
+    var date = cellDeadline(cell);
     if (!date) return false;
     var diff = OCPLH.daysUntil(date, today);
     var cls = OCPLH.classify(diff, settings);

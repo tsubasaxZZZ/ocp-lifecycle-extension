@@ -57,6 +57,33 @@ test("parseDateFromText: non-dates return null", () => {
   assert.equal(lib.parseDateFromText("4.20"), null);
 });
 
+test("parseDeadlineFromText: takes the last date in a range", () => {
+  const d = lib.parseDeadlineFromText("May 20, 2025 to May 31, 2030");
+  assert.equal(d.getFullYear(), 2030);
+  assert.equal(d.getMonth(), 4);
+  assert.equal(d.getDate(), 31);
+});
+
+test("parseDeadlineFromText: single date and mixed strings", () => {
+  assert.equal(lib.parseDeadlineFromText("March 17, 2026").getFullYear(), 2026);
+  const mixed = lib.parseDeadlineFromText("GA of 4.22 + 3 Months to Dec 17, 2026");
+  assert.equal(mixed.getFullYear(), 2026);
+  assert.equal(mixed.getMonth(), 11);
+  assert.equal(lib.parseDeadlineFromText("to Ongoing"), null);
+  const ja = lib.parseDeadlineFromText("2025年5月20日 から 2030年5月31日");
+  assert.equal(ja.getFullYear(), 2030);
+});
+
+test("parseDateTimeAttr: ISO timestamps map to local date of UTC day", () => {
+  const d = lib.parseDateTimeAttr("2030-05-31T00:00:00.000Z");
+  assert.equal(d.getFullYear(), 2030);
+  assert.equal(d.getMonth(), 4);
+  assert.equal(d.getDate(), 31);
+  assert.equal(lib.parseDateTimeAttr("Ongoing"), null);
+  assert.equal(lib.parseDateTimeAttr(""), null);
+  assert.equal(lib.parseDateTimeAttr(null), null);
+});
+
 test("daysUntil: basic deltas ignore time of day", () => {
   const today = new Date(2026, 5, 5, 23, 59);
   assert.equal(lib.daysUntil(new Date(2026, 5, 5), today), 0);

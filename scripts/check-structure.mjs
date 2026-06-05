@@ -5,6 +5,8 @@ const lib = require("../src/lib.js");
 const apiOnly = process.argv.includes("--api-only");
 
 const PAGE_URL = "https://access.redhat.com/support/policy/updates/openshift";
+const PLC_PAGE_URL =
+  "https://access.redhat.com/product-life-cycles?product=Red%20Hat%20Enterprise%20Linux,Red%20Hat%20OpenShift%20Container%20Platform";
 const API_URL =
   "https://access.redhat.com/product-life-cycles/api/v1/products?name=OpenShift%20Container%20Platform%204";
 
@@ -100,9 +102,14 @@ function collectPageData() {
       );
     });
     root.querySelectorAll("td[data-label], td[headers]").forEach(function (td) {
+      var endDt = td.querySelector(".end-date pfe-datetime[datetime]");
+      var all = td.querySelectorAll("pfe-datetime[datetime]");
       labelCells.push({
         label: td.getAttribute("data-label") || td.getAttribute("headers") || "",
-        text: (td.textContent || "").trim()
+        text: (td.textContent || "").trim(),
+        endAttr: endDt
+          ? endDt.getAttribute("datetime")
+          : (all.length > 0 ? all[all.length - 1].getAttribute("datetime") : null)
       });
     });
   });
@@ -168,6 +175,57 @@ async function checkDom(browser, locale) {
   }
 }
 
+async function checkPlcDom(browser) {
+  const tag = "[plc]";
+  console.log(`${tag} rendering ${PLC_PAGE_URL}`);
+  const context = await browser.newContext({
+    userAgent:
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(PLC_PAGE_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page
+      .waitForFunction(
+        `(${collectPageData.toString()})().labelCells.length > 20`,
+        null,
+        { timeout: 45000 }
+      )
+      .catch(() => {});
+
+    const data = await page.evaluate(collectPageData);
+
+    const lifecycleTables = data.headerRows.filter((h) => lib.isLifecycleHeaderSet(h));
+    check(lifecycleTables.length >= 2,
+      `${tag} expected >= 2 lifecycle tables (RHEL + OCP), found ${lifecycleTables.length}. Header rows: ${JSON.stringify(data.headerRows.filter((h) => h.length > 0).slice(0, 10))}`);
+
+    const labels = new Set(data.labelCells.map((c) => c.label));
+    for (const expected of ["General availability", "Full support", "Maintenance support"]) {
+      check(labels.has(expected),
+        `${tag} expected cell label "${expected}" not found. Labels seen: ${JSON.stringify([...labels].slice(0, 20))}`);
+    }
+
+    let endDates = 0;
+    let highlightable = 0;
+    for (const cell of data.labelCells) {
+      if (cell.endAttr && lib.parseDateTimeAttr(cell.endAttr)) {
+        endDates += 1;
+        if (!lib.isExcludedLabel(cell.label)) highlightable += 1;
+      }
+    }
+    check(endDates >= 10,
+      `${tag} too few cells with parseable end datetime attributes: ${endDates}`);
+    check(highlightable >= 5,
+      `${tag} too few highlightable cells: ${highlightable}`);
+
+    console.log(
+      `${tag} ok (${lifecycleTables.length} tables, ${data.labelCells.length} labelled cells, ${endDates} end dates, ${highlightable} highlightable)`
+    );
+  } finally {
+    await context.close();
+  }
+}
+
 try {
   await checkApi();
   if (apiOnly) {
@@ -179,6 +237,7 @@ try {
       for (const locale of LOCALES) {
         await checkDom(browser, locale);
       }
+      await checkPlcDom(browser);
     } finally {
       await browser.close();
     }

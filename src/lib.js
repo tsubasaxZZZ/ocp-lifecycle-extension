@@ -57,6 +57,35 @@
     return null;
   }
 
+  function parseDeadlineFromText(text) {
+    if (!text) return null;
+    var globals = [
+      new RegExp(EN_DATE_RE.source, "gi"),
+      new RegExp(ISO_DATE_RE.source, "g"),
+      new RegExp(JA_DATE_RE.source, "g")
+    ];
+    var best = null;
+    var bestIdx = -1;
+    globals.forEach(function (re) {
+      var m;
+      while ((m = re.exec(text)) !== null) {
+        if (m.index > bestIdx) {
+          bestIdx = m.index;
+          best = m[0];
+        }
+      }
+    });
+    return best ? parseDateFromText(best) : null;
+  }
+
+  function parseDateTimeAttr(value) {
+    if (!value) return null;
+    var t = Date.parse(value);
+    if (isNaN(t)) return null;
+    var d = new Date(t);
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  }
+
   function daysUntil(target, today) {
     var now = today || new Date();
     var a = Date.UTC(target.getFullYear(), target.getMonth(), target.getDate());
@@ -109,6 +138,8 @@
     DEFAULTS: DEFAULTS,
     REQUIRED_HEADERS: REQUIRED_HEADERS,
     parseDateFromText: parseDateFromText,
+    parseDeadlineFromText: parseDeadlineFromText,
+    parseDateTimeAttr: parseDateTimeAttr,
     daysUntil: daysUntil,
     classify: classify,
     isLifecycleHeaderSet: isLifecycleHeaderSet,

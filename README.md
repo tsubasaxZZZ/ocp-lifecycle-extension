@@ -12,8 +12,10 @@ so you can see at a glance which versions are approaching end of support.
 
 ## What it does
 
-Open the OpenShift life cycle page and every date cell is highlighted by how
-close the deadline is:
+Open the OpenShift life cycle page — or the
+[all-products life cycle page](https://access.redhat.com/product-life-cycles)
+(Red Hat Enterprise Linux, OpenShift, and any other product you add to it) —
+and every date cell is highlighted by how close the deadline is:
 
 | Color | Meaning (default) |
 |---|---|
@@ -27,7 +29,9 @@ close the deadline is:
 - A legend is inserted above the table so you always know what the colors mean
 - The GA (General availability) column is not highlighted — it is a start date,
   not a deadline
-- Works with both the English and Japanese display of the page
+- Date-range cells ("May 20, 2025 to May 31, 2030") are judged by their end
+  date; ranges ending in "Ongoing" are left unhighlighted
+- Works with both the English and Japanese display of the pages
 
 ## Installation
 
