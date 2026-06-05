@@ -58,9 +58,11 @@ node scripts/check-structure.mjs --api-only   # API check only (no playwright ne
   fails, the page structure likely changed — fix `src/lib.js` detection logic and
   `scripts/check-structure.mjs` expectations together, and verify with a real
   Playwright run before releasing.
-- `scripts/check-structure.mjs` is target-driven: pages/locales/products to
-  verify are declared in `API_TARGET` / `DOM_TARGETS` at the top of the file.
-  Adding coverage means adding an entry, not a new check function.
+- The structure check is target-driven: pages/locales/products to verify are
+  declared in `scripts/check/targets.mjs` (`API_TARGETS` / `DOM_TARGETS`).
+  Adding coverage means adding an entry, not a new check function. API targets
+  check only the contract the extension depends on (GA phase exists, dates
+  parse) — do not add full phase-name lists, they cause false alarms.
 - When the page structure changes, also refresh the static fixtures in
   `test/content.dom.test.js` from the real rendered DOM (dump the
   `plcc-table` shadow root with Playwright and mirror the new markup).

@@ -3,7 +3,17 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const lib = require("../../src/lib.js");
 
-export async function runApiCheck(target) {
+export async function runApiChecks(targets) {
+  const errors = [];
+  for (const target of targets) {
+    errors.push(...await checkApiTarget(target));
+  }
+  return errors;
+}
+
+// Verifies only the contract the extension depends on: the product exists,
+// exposes a GA phase, and its dates parse. Other phase names are free to change.
+async function checkApiTarget(target) {
   const errors = [];
   const check = makeCheck(errors);
   const tag = `[${target.name}]`;
@@ -21,9 +31,10 @@ export async function runApiCheck(target) {
     `${tag} expected >= ${target.minVersions} versions, got ${versions?.length}`)) return errors;
 
   const phaseNames = (product.all_phases || []).map((p) => p.name);
-  for (const expected of target.expectedPhases) {
+  const requiredPhases = target.requiredPhases || ["General availability"];
+  for (const expected of requiredPhases) {
     check(phaseNames.includes(expected),
-      `${tag} expected phase "${expected}" not found in all_phases: ${JSON.stringify(phaseNames)}`);
+      `${tag} required phase "${expected}" not found in all_phases: ${JSON.stringify(phaseNames)}`);
   }
 
   for (const v of versions.slice(0, 6)) {
