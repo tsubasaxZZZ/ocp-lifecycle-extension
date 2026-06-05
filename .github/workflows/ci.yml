@@ -15,7 +15,10 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run unit tests
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit and DOM tests
         run: npm test
 
       - name: Verify manifest is valid JSON and locales exist
