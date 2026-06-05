@@ -1,7 +1,7 @@
-# Lifecycle Highlighter for OpenShift
+# Lifecycle Highlighter for Red Hat Products
 
-[Red Hat OpenShift Container Platform のライフサイクルページ](https://access.redhat.com/support/policy/updates/openshift)
-の Life Cycle Dates 表を期限の近さに応じて色分けし、サポート終了が近いバージョンを
+Red Hat 各製品のライフサイクルページ(OpenShift ほか)の Life Cycle Dates 表を
+期限の近さに応じて色分けし、サポート終了が近いバージョンを
 一目で分かるようにする Chrome 拡張です。
 
 For the English version, see [README.md](README.md).

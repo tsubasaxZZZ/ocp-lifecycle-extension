@@ -1,6 +1,6 @@
-# Lifecycle Highlighter for OpenShift — 仕様・開発ドキュメント
+# Lifecycle Highlighter for Red Hat Products — 仕様・開発ドキュメント
 
-OpenShift Container Platform のライフサイクルページにある「Life Cycle Dates」表を、
+Red Hat 各製品のライフサイクルページにある「Life Cycle Dates」表を、
 期限の近さに応じて視覚的にハイライトするブラウザ拡張。
 
 ユーザー向けの説明は [README.md](README.md)(英語)/ [README.jp.md](README.jp.md)(日本語)を参照。

@@ -1,8 +1,8 @@
-# Lifecycle Highlighter for OpenShift
+# Lifecycle Highlighter for Red Hat Products
 
-A Chrome extension that color-codes the Life Cycle Dates table on the
-[Red Hat OpenShift Container Platform life cycle page](https://access.redhat.com/support/policy/updates/openshift)
-so you can see at a glance which versions are approaching end of support.
+A Chrome extension that color-codes the Life Cycle Dates tables on Red Hat's
+life cycle pages (OpenShift and other products) so you can see at a glance
+which versions are approaching end of support.
 
 日本語版は [README.jp.md](README.jp.md) を参照してください。
 
