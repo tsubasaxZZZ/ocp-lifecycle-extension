@@ -58,3 +58,8 @@ node scripts/check-structure.mjs --api-only   # API check only (no playwright ne
   fails, the page structure likely changed — fix `src/lib.js` detection logic and
   `scripts/check-structure.mjs` expectations together, and verify with a real
   Playwright run before releasing.
+- When the page structure changes, also refresh the static fixtures in
+  `test/content.dom.test.js` from the real rendered DOM (dump the
+  `plcc-table` shadow root with Playwright and mirror the new markup).
+  The jsdom tests guard our code against a fixed page contract; stale
+  fixtures silently keep guarding the old contract.
