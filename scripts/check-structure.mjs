@@ -1,18 +1,12 @@
 // Entry point: declarative targets live in scripts/check/targets.mjs,
 // the verification engine in scripts/check/engine.mjs.
-import { API_TARGETS, DOM_TARGETS } from "./check/targets.mjs";
-import { runApiChecks, runDomChecks } from "./check/engine.mjs";
+import { DOM_TARGETS } from "./check/targets.mjs";
+import { runDomChecks } from "./check/engine.mjs";
 
-const apiOnly = process.argv.includes("--api-only");
 const errors = [];
 
 try {
-  errors.push(...await runApiChecks(API_TARGETS));
-  if (apiOnly) {
-    console.log("[dom] skipped (--api-only)");
-  } else {
-    errors.push(...await runDomChecks(DOM_TARGETS));
-  }
+  errors.push(...await runDomChecks(DOM_TARGETS));
 } catch (e) {
   errors.push(`unexpected error: ${e.stack || e}`);
 }

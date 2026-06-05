@@ -49,11 +49,11 @@ jobs:
               title,
               labels: ["structure-check"],
               body: [
-                "The scheduled structure check against",
-                "https://access.redhat.com/support/policy/updates/openshift failed.",
+                "The scheduled structure check against the Red Hat life cycle pages failed.",
                 "",
-                "The Life Cycle Dates table or the lifecycle API may have changed structure,",
-                "which can break the extension's highlighting.",
+                "The rendered Life Cycle Dates tables may have changed structure,",
+                "which can break the extension's highlighting. See scripts/check/targets.mjs",
+                "for the monitored pages.",
                 "",
                 `Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
               ].join("\n")

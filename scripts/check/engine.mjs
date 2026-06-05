@@ -3,54 +3,6 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const lib = require("../../src/lib.js");
 
-export async function runApiChecks(targets) {
-  const errors = [];
-  for (const target of targets) {
-    errors.push(...await checkApiTarget(target));
-  }
-  return errors;
-}
-
-// Verifies only the contract the extension depends on: the product exists,
-// exposes a GA phase, and its dates parse. Other phase names are free to change.
-async function checkApiTarget(target) {
-  const errors = [];
-  const check = makeCheck(errors);
-  const tag = `[${target.name}]`;
-  console.log(`${tag} fetching ${target.url}`);
-
-  const res = await fetch(target.url, { headers: { accept: "application/json" } });
-  if (!check(res.ok, `${tag} HTTP ${res.status}`)) return errors;
-
-  const body = await res.json();
-  const product = body?.data?.[0];
-  if (!check(!!product, `${tag} data[0] is missing`)) return errors;
-
-  const versions = product.versions;
-  if (!check(Array.isArray(versions) && versions.length >= target.minVersions,
-    `${tag} expected >= ${target.minVersions} versions, got ${versions?.length}`)) return errors;
-
-  const phaseNames = (product.all_phases || []).map((p) => p.name);
-  const requiredPhases = target.requiredPhases || ["General availability"];
-  for (const expected of requiredPhases) {
-    check(phaseNames.includes(expected),
-      `${tag} required phase "${expected}" not found in all_phases: ${JSON.stringify(phaseNames)}`);
-  }
-
-  for (const v of versions.slice(0, 6)) {
-    check(typeof v.name === "string" && v.name.length > 0, `${tag} version with empty name`);
-    check(Array.isArray(v.phases) && v.phases.length > 0, `${tag} version ${v.name} has no phases`);
-    for (const p of v.phases || []) {
-      if (p.date_format === "date") {
-        check(!Number.isNaN(Date.parse(p.date)),
-          `${tag} version ${v.name} phase "${p.name}" has unparseable date: ${p.date}`);
-      }
-    }
-  }
-  if (errors.length === 0) console.log(`${tag} ok (${versions.length} versions)`);
-  return errors;
-}
-
 export async function runDomChecks(targets) {
   const errors = [];
   const { chromium } = await import("playwright");

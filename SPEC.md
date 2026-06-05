@@ -72,9 +72,9 @@ OpenShift Container Platform のライフサイクルページにある「Life C
   テキスト内に複数の日付がある場合は最後尾=終了日を採用。
   判定はユーザーのローカルタイムゾーンの「今日」基準
 - フォールバックとして、Shadow DOM を使わない素の table(ヘッダーテキスト判定)にも対応
-- 描画元データは Red Hat lifecycle API:
-  `https://access.redhat.com/product-life-cycles/api/v1/products?name=OpenShift Container Platform 4`
-  (拡張自体はAPIを呼ばずDOMのみ参照。CIの構造チェックがAPIとDOMの両方を監視)
+- 描画元データは Red Hat lifecycle API(`/product-life-cycles/api/v1/products`)だが、
+  **拡張も構造チェックも参照するのは描画後の DOM のみ**。拡張に影響する変更は
+  必ず DOM に現れるため、API は監視しない(調査時の切り分けに手で叩く程度)
 
 ## エッジケース
 
@@ -88,8 +88,7 @@ OpenShift Container Platform のライフサイクルページにある「Life C
 ```bash
 npm test            # ユニットテスト (node:test)
 npm run build       # dist/ に Web Store 用 zip を生成
-npm run check:structure            # 実ページ構造の検証 (要 playwright)
-node scripts/check-structure.mjs --api-only   # API 部分のみ検証
+npm run check:structure   # 実ページ構造の検証 (要 playwright)
 ```
 
 ローカルで試す: `chrome://extensions` → デベロッパーモード → 「パッケージ化されていない拡張機能を読み込む」でリポジトリルートを選択。
@@ -106,7 +105,7 @@ scripts/check-structure.mjs  構造検証のエントリポイント
 scripts/check/targets.mjs    検証対象の宣言(URL・ロケール・期待値)。
                              対象追加=ここに定義を追加。ページ固有の検証が
                              必要になったら extraChecks フックを定義側に書く
-scripts/check/engine.mjs     共通の検証エンジン(API + Playwright DOM)
+scripts/check/engine.mjs     共通の検証エンジン(Playwright DOM)
 scripts/build.sh         zip ビルド
 test/lib.test.js         ユニットテスト
 ```
@@ -117,7 +116,7 @@ test/lib.test.js         ユニットテスト
 |---|---|---|
 | `ci.yml` | push / PR | テスト → manifest・ロケール検証 → zip ビルド → artifact |
 | `release.yml` | `v*` タグ push | テスト → タグとmanifestのバージョン一致検証 → Chrome Web Store へアップロード&公開 → GitHub Release 作成 |
-| `structure-check.yml` | 毎日 21:00 UTC (06:00 JST) / 手動 | Red Hat の API スキーマと、Playwright で描画した実ページ(**英語・日本語の両方**)の表構造が拡張の想定と一致するか検証。**不一致なら fail し、Issue を自動起票** |
+| `structure-check.yml` | 毎日 21:00 UTC (06:00 JST) / 手動 | Playwright で描画した実ページ(OCP は**英語・日本語の両方**、全製品ページ)の表構造が拡張の想定と一致するか検証。拡張が読むのは DOM だけなので、検証も DOM に一本化している。**不一致なら fail し、Issue を自動起票** |
 
 ## リリース手順
 

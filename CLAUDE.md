@@ -43,10 +43,9 @@ https://access.redhat.com/support/policy/updates/openshift by deadline proximity
 ## Commands
 
 ```bash
-npm test                                      # unit tests (node:test, no deps)
-npm run build                                 # zip into dist/
-npm run check:structure                       # live-page validation (playwright)
-node scripts/check-structure.mjs --api-only   # API check only (no playwright needed)
+npm test                  # unit + DOM tests (node:test, jsdom)
+npm run build             # zip into dist/
+npm run check:structure   # live-page validation (playwright)
 ```
 
 ## Workflow notes
@@ -54,15 +53,15 @@ node scripts/check-structure.mjs --api-only   # API check only (no playwright ne
 - `_locales/en` and `_locales/ja` must have identical message keys (CI enforces this).
 - Release: bump `version` in **both** `manifest.json` and `package.json`, then push
   a matching `v*` tag. The release workflow verifies tag == manifest version.
-- `structure-check.yml` runs daily against the live Red Hat page and API; if it
+- `structure-check.yml` runs daily against the live Red Hat pages; if it
   fails, the page structure likely changed — fix `src/lib.js` detection logic and
-  `scripts/check-structure.mjs` expectations together, and verify with a real
-  Playwright run before releasing.
-- The structure check is target-driven: pages/locales/products to verify are
-  declared in `scripts/check/targets.mjs` (`API_TARGETS` / `DOM_TARGETS`).
-  Adding coverage means adding an entry, not a new check function. API targets
-  check only the contract the extension depends on (GA phase exists, dates
-  parse) — do not add full phase-name lists, they cause false alarms.
+  the check expectations together, and verify with a real Playwright run
+  before releasing.
+- The structure check is target-driven: pages/locales to verify are declared
+  in `scripts/check/targets.mjs` (`DOM_TARGETS`). Adding coverage means adding
+  an entry, not a new check function. The check deliberately verifies only the
+  rendered DOM (what the extension consumes) — do not add upstream API checks;
+  anything that matters surfaces in the DOM, and extra checks cause false alarms.
 - When the page structure changes, also refresh the static fixtures in
   `test/content.dom.test.js` from the real rendered DOM (dump the
   `plcc-table` shadow root with Playwright and mirror the new markup).
