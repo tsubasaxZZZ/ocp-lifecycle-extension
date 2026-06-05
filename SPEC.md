@@ -73,8 +73,7 @@ OpenShift Container Platform のライフサイクルページにある「Life C
   判定はユーザーのローカルタイムゾーンの「今日」基準
 - フォールバックとして、Shadow DOM を使わない素の table(ヘッダーテキスト判定)にも対応
 - 描画元データは Red Hat lifecycle API(`/product-life-cycles/api/v1/products`)だが、
-  **拡張も構造チェックも参照するのは描画後の DOM のみ**。拡張に影響する変更は
-  必ず DOM に現れるため、API は監視しない(調査時の切り分けに手で叩く程度)
+  **拡張も構造チェックも参照するのは描画後の DOM のみ**
 
 ## エッジケース
 
@@ -116,7 +115,7 @@ test/lib.test.js         ユニットテスト
 |---|---|---|
 | `ci.yml` | push / PR | テスト → manifest・ロケール検証 → zip ビルド → artifact |
 | `release.yml` | `v*` タグ push | テスト → タグとmanifestのバージョン一致検証 → Chrome Web Store へアップロード&公開 → GitHub Release 作成 |
-| `structure-check.yml` | 毎日 21:00 UTC (06:00 JST) / 手動 | Playwright で描画した実ページ(OCP は**英語・日本語の両方**、全製品ページ)の表構造が拡張の想定と一致するか検証。拡張が読むのは DOM だけなので、検証も DOM に一本化している。**不一致なら fail し、Issue を自動起票** |
+| `structure-check.yml` | 毎日 21:00 UTC (06:00 JST) / 手動 | Playwright で描画した実ページ(OCP は**英語・日本語の両方**、全製品ページ)の表構造が拡張の想定と一致するか検証。**不一致なら fail し、Issue を自動起票** |
 
 ## リリース手順
 

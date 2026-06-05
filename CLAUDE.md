@@ -59,9 +59,8 @@ npm run check:structure   # live-page validation (playwright)
   before releasing.
 - The structure check is target-driven: pages/locales to verify are declared
   in `scripts/check/targets.mjs` (`DOM_TARGETS`). Adding coverage means adding
-  an entry, not a new check function. The check deliberately verifies only the
-  rendered DOM (what the extension consumes) — do not add upstream API checks;
-  anything that matters surfaces in the DOM, and extra checks cause false alarms.
+  an entry, not a new check function. The check verifies the rendered DOM —
+  the same thing the extension consumes.
 - When the page structure changes, also refresh the static fixtures in
   `test/content.dom.test.js` from the real rendered DOM (dump the
   `plcc-table` shadow root with Playwright and mirror the new markup).
