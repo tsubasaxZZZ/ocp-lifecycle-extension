@@ -1,6 +1,6 @@
 {
   "extName": { "message": "Lifecycle Highlighter for OpenShift" },
-  "extDescription": { "message": "Unofficial tool that highlights the Life Cycle Dates table on the Red Hat OpenShift lifecycle page by deadline proximity." },
+  "extDescription": { "message": "Unofficial tool that highlights the Life Cycle Dates tables on Red Hat life cycle pages (OpenShift and other products) by deadline proximity." },
   "badgeDaysLeft": { "message": "$DAYS$d left", "placeholders": { "days": { "content": "$1" } } },
   "badgeEndedAgo": { "message": "Ended $DAYS$d ago", "placeholders": { "days": { "content": "$1" } } },
   "badgeReleasedAgo": { "message": "Released $DAYS$d ago", "placeholders": { "days": { "content": "$1" } } },

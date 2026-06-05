@@ -12,9 +12,10 @@ For the English version, see [README.md](README.md).
 
 ## できること
 
-OpenShift のライフサイクルページ、または
+OpenShift のライフサイクルページ、
 [全製品のライフサイクルページ](https://access.redhat.com/product-life-cycles)
-(RHEL・OpenShift ほか、ページに追加した任意の製品)を開くと、
+(ページに追加した任意の製品)、および
+`access.redhat.com/support/policy/updates/` 配下の製品個別ライフサイクルページを開くと、
 各日付セルが期限の近さで色分けされます:
 
 | 色 | 意味(デフォルト) |

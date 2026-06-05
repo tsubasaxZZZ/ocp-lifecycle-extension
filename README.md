@@ -12,10 +12,11 @@ so you can see at a glance which versions are approaching end of support.
 
 ## What it does
 
-Open the OpenShift life cycle page — or the
+Open the OpenShift life cycle page, the
 [all-products life cycle page](https://access.redhat.com/product-life-cycles)
-(Red Hat Enterprise Linux, OpenShift, and any other product you add to it) —
-and every date cell is highlighted by how close the deadline is:
+(with any products you add to it), or any other per-product life cycle page
+under `access.redhat.com/support/policy/updates/` — every date cell is
+highlighted by how close the deadline is:
 
 | Color | Meaning (default) |
 |---|---|

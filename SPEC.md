@@ -8,8 +8,9 @@ OpenShift Container Platform のライフサイクルページにある「Life C
 ## 対象
 
 - URL:
-  - `https://access.redhat.com/support/policy/updates/openshift`(OpenShift単体ページ)
-  - `https://access.redhat.com/product-life-cycles*`(全製品ページ。RHEL等、表示中の全製品の表を装飾)
+  - `https://access.redhat.com/support/policy/updates/*`(製品個別ページ。OpenShift含む。
+    ライフサイクル表(GA列)が無いページでは何もしない——安全性はURLでなく検知ロジックが担保)
+  - `https://access.redhat.com/product-life-cycles*`(全製品ページ。表示中の全製品の表を装飾)
   - 言語切替は `rh_locale` Cookie で行われURLは不変。英語・日本語表示の両方に対応
     (日本語はヘッダー・`data-label`・日付形式がローカライズされる)
 - ブラウザ: Chrome (Manifest V3)。Edge は同一コードで動作見込み。Firefox は将来対応

@@ -14,8 +14,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://access.redhat.com/support/policy/updates/openshift*",
-        "https://access.redhat.com/*/support/policy/updates/openshift*",
+        "https://access.redhat.com/support/policy/updates/*",
+        "https://access.redhat.com/*/support/policy/updates/*",
         "https://access.redhat.com/product-life-cycles*",
         "https://access.redhat.com/*/product-life-cycles*"
       ],
