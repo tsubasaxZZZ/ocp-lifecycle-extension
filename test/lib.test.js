@@ -130,6 +130,15 @@ test("isLifecycleHeaderSet: matches the Japanese page headers", () => {
   assert.ok(lib.isLifecycleHeaderSet(headers));
 });
 
+test("isLifecycleHeaderSet: matches tables without Maintenance support (.NET style)", () => {
+  assert.ok(lib.isLifecycleHeaderSet(
+    ["Version", "General availability", "Full support", "End of Life"]
+  ));
+  assert.ok(lib.isLifecycleHeaderSet(
+    ["Version", "Tier", "OpenShift Compatibility", "General availability", "Full support", "Maintenance support"]
+  ));
+});
+
 test("isLifecycleHeaderSet: rejects unrelated tables", () => {
   assert.equal(lib.isLifecycleHeaderSet(["Software Classification", "Provided Tools"]), false);
   assert.equal(lib.isLifecycleHeaderSet([]), false);

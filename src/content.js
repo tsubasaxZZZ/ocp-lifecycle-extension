@@ -148,8 +148,10 @@
       if (decorateCell(cells[i], today)) decorated++;
     }
 
-    if (settings.showLegend) insertLegend(headerTable);
-    if (decorated > 0 || settings.showLegend) ensureStyle(root);
+    if (decorated > 0) {
+      if (settings.showLegend) insertLegend(headerTable);
+      ensureStyle(root);
+    }
     return true;
   }
 

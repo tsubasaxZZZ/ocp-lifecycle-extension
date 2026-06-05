@@ -140,3 +140,56 @@ test("All-products page: deadlines come from pfe-datetime end-date attributes", 
   assert.equal(cls("Final minor release"), "", "version cell skipped");
   assert.ok(sr.querySelector(".ocp-lh-legend"), "legend inserted");
 });
+
+test("All-products page: .NET-style table (no Maintenance support column) is decorated", async () => {
+  setupPage("https://access.redhat.com/product-life-cycles", `<div id="ph"></div>`);
+  await sleep(50);
+
+  const host = document.createElement("plcc-table");
+  const sr = host.attachShadow({ mode: "open" });
+  sr.innerHTML = `
+    <table><thead><tr>
+      <th>Version</th><th>General availability</th><th>Full support</th><th>End of Life</th>
+    </tr></thead></table>
+    <table><tbody><tr>
+      <th data-label="Version">.NET 9.0</th>
+      <td data-label="General availability"><div class="end-date"><pfe-datetime datetime="2024-11-12T00:00:00.000Z"></pfe-datetime></div></td>
+      <td data-label="Full support"><div class="start-date"><pfe-datetime datetime="2024-11-12T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date"><pfe-datetime datetime="2099-11-10T00:00:00.000Z"></pfe-datetime></div></td>
+      <td data-label="End of Life"><div class="end-date"><pfe-datetime datetime="2099-11-10T00:00:00.000Z"></pfe-datetime></div></td>
+    </tr></tbody></table>`;
+  document.getElementById("ph").appendChild(host);
+  await sleep(600);
+
+  const cls = (label) => [...sr.querySelector(`td[data-label="${label}"]`).classList].join(" ");
+  assert.equal(cls("General availability"), "", "GA excluded");
+  assert.match(cls("Full support"), /ocp-lh-ok/, "full support range decorated");
+  assert.match(cls("End of Life"), /ocp-lh-ok/, "End of Life column decorated");
+  assert.ok(sr.querySelector(".ocp-lh-legend"), "legend inserted");
+});
+
+test("All-products page: table with no parseable deadlines gets no legend", async () => {
+  setupPage("https://access.redhat.com/product-life-cycles", `<div id="ph"></div>`);
+  await sleep(50);
+
+  const host = document.createElement("plcc-table");
+  const sr = host.attachShadow({ mode: "open" });
+  sr.innerHTML = `
+    <table><thead><tr>
+      <th>Version</th><th>Tier</th><th>OpenShift Compatibility</th>
+      <th>General availability</th><th>Full support</th><th>Maintenance support</th>
+    </tr></thead></table>
+    <table><tbody><tr>
+      <th data-label="Version">1.37</th>
+      <td data-label="Tier">Agnostic</td>
+      <td data-label="OpenShift Compatibility">4.20, 4.19, 4.18, 4.17, 4.16</td>
+      <td data-label="General availability"><div class="end-date"><pfe-datetime datetime="2025-11-24T00:00:00.000Z"></pfe-datetime></div></td>
+      <td data-label="Full support"><div class="start-date"><pfe-datetime datetime="2025-11-24T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date">Release of Serverless 1.38 + 1 month</div></td>
+      <td data-label="Maintenance support"><div class="start-date">Release of Serverless 1.38 + 1 month</div><div class="date-separator">to</div><div class="end-date">Release of Serverless 1.38 + 4 month</div></td>
+    </tr></tbody></table>`;
+  document.getElementById("ph").appendChild(host);
+  await sleep(600);
+
+  assert.equal(sr.querySelectorAll(".ocp-lh-cell").length, 0, "no cells decorated");
+  assert.equal(sr.querySelector(".ocp-lh-legend"), null, "no legend when nothing is decorated");
+  assert.equal([...sr.querySelector('td[data-label="OpenShift Compatibility"]').classList].join(" "), "", "compatibility versions not mistaken for dates");
+});

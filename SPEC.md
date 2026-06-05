@@ -40,6 +40,8 @@ OpenShift Container Platform のライフサイクルページにある「Life C
 
 表の直上に色の意味と現在の閾値を示す凡例を挿入する。
 拡張による装飾であることが分かる表記(拡張名)を含める。
+**1セルも装飾しなかった表には挿入しない**(期限が全て相対表記の製品などで
+凡例だけが浮くのを防ぐ)。
 
 ### 4. 設定 (options ページ)
 
@@ -130,10 +132,13 @@ Chrome Web Store API のクレデンシャル([取得手順](https://github.com/
 2回目以降のバージョン更新からこのワークフローで自動化される。
 ストア掲載文には README と同じ非公式・商標の免責事項を入れること。
 
+表の検知条件: ヘッダーに **General availability と Full support**(日本語表示では
+一般提供 と フルサポート)の両方を含むこと。Maintenance support の有無は問わない
+(.NET のような End of Life 型の表も対象)。
+
 ## スコープ外(将来候補)
 
-- ライフサイクル表のヘッダー構成が大きく異なる製品への対応
-  (現状は General availability / Full support / Maintenance support 列を持つ表のみ検知)
+- GA / Full support 列を持たないライフサイクル表への対応
 - 「自社のEUS契約有無」を設定し、実質EOL列を強調する機能
 - 期限接近時の通知(アイコンバッジ / 定期チェック)
 - Firefox 対応

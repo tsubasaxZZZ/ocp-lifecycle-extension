@@ -29,8 +29,8 @@
   };
 
   var REQUIRED_HEADER_SETS = [
-    [/general availability/i, /full support/i, /maintenance support/i],
-    [/一般提供/, /フルサポート/, /メンテナンスサポート/]
+    [/general availability/i, /full support/i],
+    [/一般提供/, /フルサポート/]
   ];
   var REQUIRED_HEADERS = REQUIRED_HEADER_SETS[0];
   var EXCLUDED_HEADERS = [/general availability/i, /^version/i, /一般提供/, /^バージョン/];
