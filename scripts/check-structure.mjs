@@ -4,32 +4,63 @@ const require = createRequire(import.meta.url);
 const lib = require("../src/lib.js");
 const apiOnly = process.argv.includes("--api-only");
 
-const PAGE_URL = "https://access.redhat.com/support/policy/updates/openshift";
-const PLC_PAGE_URL =
-  "https://access.redhat.com/product-life-cycles?product=Red%20Hat%20Enterprise%20Linux,Red%20Hat%20OpenShift%20Container%20Platform,Red%20Hat%20OpenShift%20Serverless%20Logic%20Operator,.NET,Ansible%20Core";
-const API_URL =
-  "https://access.redhat.com/product-life-cycles/api/v1/products?name=OpenShift%20Container%20Platform%204";
+// ---------------------------------------------------------------------------
+// Declarative target definitions.
+// Adding a page, locale, or product = adding/editing an entry here.
+// ---------------------------------------------------------------------------
 
-const EXPECTED_PHASES = [
-  "General availability",
-  "Full support",
-  "Maintenance support",
-  "Extended update support",
-  "Extended update support Term 2",
-  "Extended update support Term 3",
-  "Extended life phase"
-];
+const API_TARGET = {
+  name: "api:ocp",
+  url: "https://access.redhat.com/product-life-cycles/api/v1/products?name=OpenShift%20Container%20Platform%204",
+  minVersions: 4,
+  expectedPhases: [
+    "General availability",
+    "Full support",
+    "Maintenance support",
+    "Extended update support",
+    "Extended update support Term 2",
+    "Extended update support Term 3",
+    "Extended life phase"
+  ]
+};
 
-const LOCALES = [
+const DOM_TARGETS = [
   {
-    cookie: "en",
-    expectedLabels: ["general-availability", "full-support", "maintenance-support"]
+    name: "ocp:en",
+    url: "https://access.redhat.com/support/policy/updates/openshift",
+    locale: "en",
+    expectedLabels: ["general-availability", "full-support", "maintenance-support"],
+    minTables: 1,
+    minLabelCells: 10,
+    minDeadlineCells: 5,
+    minHighlightable: 3
   },
   {
-    cookie: "ja",
-    expectedLabels: ["一般提供の開始-(ga)-日", "フルサポート", "メンテナンスサポート"]
+    name: "ocp:ja",
+    url: "https://access.redhat.com/support/policy/updates/openshift",
+    locale: "ja",
+    expectedLabels: ["一般提供の開始-(ga)-日", "フルサポート", "メンテナンスサポート"],
+    minTables: 1,
+    minLabelCells: 10,
+    minDeadlineCells: 5,
+    minHighlightable: 3
+  },
+  {
+    name: "all-products",
+    url: "https://access.redhat.com/product-life-cycles?product=" +
+      encodeURIComponent("Red Hat Enterprise Linux,Red Hat OpenShift Container Platform,Red Hat OpenShift Serverless Logic Operator,.NET,Ansible Core"),
+    locale: "en",
+    expectedLabels: ["General availability", "Full support", "Maintenance support"],
+    minTables: 4,
+    minLabelCells: 20,
+    minDeadlineCells: 10,
+    minHighlightable: 5
   }
 ];
+
+// ---------------------------------------------------------------------------
+// Verification engine.
+// ---------------------------------------------------------------------------
 
 const errors = [];
 
@@ -38,40 +69,37 @@ function check(cond, message) {
   return cond;
 }
 
-async function checkApi() {
-  console.log(`[api] fetching ${API_URL}`);
-  const res = await fetch(API_URL, {
-    headers: { accept: "application/json" }
-  });
-  if (!check(res.ok, `[api] HTTP ${res.status}`)) return;
+async function checkApi(target) {
+  const tag = `[${target.name}]`;
+  console.log(`${tag} fetching ${target.url}`);
+  const res = await fetch(target.url, { headers: { accept: "application/json" } });
+  if (!check(res.ok, `${tag} HTTP ${res.status}`)) return;
 
   const body = await res.json();
   const product = body?.data?.[0];
-  if (!check(!!product, "[api] data[0] is missing")) return;
+  if (!check(!!product, `${tag} data[0] is missing`)) return;
 
   const versions = product.versions;
-  if (!check(Array.isArray(versions) && versions.length >= 4,
-    `[api] expected >= 4 versions, got ${versions?.length}`)) return;
+  if (!check(Array.isArray(versions) && versions.length >= target.minVersions,
+    `${tag} expected >= ${target.minVersions} versions, got ${versions?.length}`)) return;
 
   const phaseNames = (product.all_phases || []).map((p) => p.name);
-  for (const expected of EXPECTED_PHASES) {
+  for (const expected of target.expectedPhases) {
     check(phaseNames.includes(expected),
-      `[api] expected phase "${expected}" not found in all_phases: ${JSON.stringify(phaseNames)}`);
+      `${tag} expected phase "${expected}" not found in all_phases: ${JSON.stringify(phaseNames)}`);
   }
 
   for (const v of versions.slice(0, 6)) {
-    check(typeof v.name === "string" && v.name.length > 0,
-      `[api] version with empty name`);
-    check(Array.isArray(v.phases) && v.phases.length > 0,
-      `[api] version ${v.name} has no phases`);
+    check(typeof v.name === "string" && v.name.length > 0, `${tag} version with empty name`);
+    check(Array.isArray(v.phases) && v.phases.length > 0, `${tag} version ${v.name} has no phases`);
     for (const p of v.phases || []) {
       if (p.date_format === "date") {
         check(!Number.isNaN(Date.parse(p.date)),
-          `[api] version ${v.name} phase "${p.name}" has unparseable date: ${p.date}`);
+          `${tag} version ${v.name} phase "${p.name}" has unparseable date: ${p.date}`);
       }
     }
   }
-  console.log(`[api] ok (${versions.length} versions)`);
+  console.log(`${tag} ok (${versions.length} versions)`);
 }
 
 function collectPageData() {
@@ -116,78 +144,28 @@ function collectPageData() {
   return { headerRows: headerRows, labelCells: labelCells };
 }
 
-async function checkDom(browser, locale) {
-  const tag = `[dom:${locale.cookie}]`;
-  console.log(`${tag} rendering ${PAGE_URL}`);
+// Mirrors the extension's cellDeadline(): datetime attribute first, text fallback.
+function cellDeadline(cell) {
+  if (cell.endAttr) return lib.parseDateTimeAttr(cell.endAttr);
+  return lib.parseDeadlineFromText(cell.text);
+}
+
+async function checkDomTarget(browser, target) {
+  const tag = `[${target.name}]`;
+  console.log(`${tag} rendering ${target.url}`);
   const context = await browser.newContext({
     userAgent:
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
   });
   try {
     await context.addCookies([
-      { name: "rh_locale", value: locale.cookie, domain: ".redhat.com", path: "/" }
+      { name: "rh_locale", value: target.locale, domain: ".redhat.com", path: "/" }
     ]);
     const page = await context.newPage();
-    await page.goto(PAGE_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-
+    await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 60000 });
     await page
       .waitForFunction(
-        `(${collectPageData.toString()})().labelCells.length > 10`,
-        null,
-        { timeout: 45000 }
-      )
-      .catch(() => {});
-
-    const data = await page.evaluate(collectPageData);
-
-    const headerOk = data.headerRows.some((headers) => lib.isLifecycleHeaderSet(headers));
-    if (!check(headerOk,
-      `${tag} no lifecycle header table found. Header rows seen: ${JSON.stringify(data.headerRows.filter((h) => h.length > 0).slice(0, 10))}`)) {
-      return;
-    }
-
-    const labels = new Set(data.labelCells.map((c) => c.label));
-    for (const expected of locale.expectedLabels) {
-      check(labels.has(expected),
-        `${tag} expected cell label "${expected}" not found. Labels seen: ${JSON.stringify([...labels])}`);
-    }
-
-    let parseable = 0;
-    let highlightable = 0;
-    for (const cell of data.labelCells) {
-      if (lib.parseDateFromText(cell.text)) {
-        parseable += 1;
-        if (!lib.isExcludedLabel(cell.label)) highlightable += 1;
-      }
-    }
-    check(data.labelCells.length >= 10,
-      `${tag} too few labelled cells: ${data.labelCells.length}`);
-    check(parseable >= 5,
-      `${tag} too few parseable date cells: ${parseable}`);
-    check(highlightable >= 3,
-      `${tag} too few highlightable cells: ${highlightable}`);
-
-    console.log(
-      `${tag} ok (${data.labelCells.length} labelled cells, ${parseable} date cells, ${highlightable} highlightable)`
-    );
-  } finally {
-    await context.close();
-  }
-}
-
-async function checkPlcDom(browser) {
-  const tag = "[plc]";
-  console.log(`${tag} rendering ${PLC_PAGE_URL}`);
-  const context = await browser.newContext({
-    userAgent:
-      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
-  });
-  try {
-    const page = await context.newPage();
-    await page.goto(PLC_PAGE_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-    await page
-      .waitForFunction(
-        `(${collectPageData.toString()})().labelCells.length > 20`,
+        `(${collectPageData.toString()})().labelCells.length >= ${target.minLabelCells}`,
         null,
         { timeout: 45000 }
       )
@@ -196,48 +174,53 @@ async function checkPlcDom(browser) {
     const data = await page.evaluate(collectPageData);
 
     const lifecycleTables = data.headerRows.filter((h) => lib.isLifecycleHeaderSet(h));
-    check(lifecycleTables.length >= 4,
-      `${tag} expected >= 4 lifecycle tables (RHEL/OCP/.NET/Ansible at minimum), found ${lifecycleTables.length}. Header rows: ${JSON.stringify(data.headerRows.filter((h) => h.length > 0).slice(0, 10))}`);
+    check(lifecycleTables.length >= target.minTables,
+      `${tag} expected >= ${target.minTables} lifecycle tables, found ${lifecycleTables.length}. Header rows: ${JSON.stringify(data.headerRows.filter((h) => h.length > 0).slice(0, 10))}`);
 
     const labels = new Set(data.labelCells.map((c) => c.label));
-    for (const expected of ["General availability", "Full support", "Maintenance support"]) {
+    for (const expected of target.expectedLabels) {
       check(labels.has(expected),
         `${tag} expected cell label "${expected}" not found. Labels seen: ${JSON.stringify([...labels].slice(0, 20))}`);
     }
 
-    let endDates = 0;
+    let deadlineCells = 0;
     let highlightable = 0;
     for (const cell of data.labelCells) {
-      if (cell.endAttr && lib.parseDateTimeAttr(cell.endAttr)) {
-        endDates += 1;
+      if (cellDeadline(cell)) {
+        deadlineCells += 1;
         if (!lib.isExcludedLabel(cell.label)) highlightable += 1;
       }
     }
-    check(endDates >= 10,
-      `${tag} too few cells with parseable end datetime attributes: ${endDates}`);
-    check(highlightable >= 5,
+    check(data.labelCells.length >= target.minLabelCells,
+      `${tag} too few labelled cells: ${data.labelCells.length}`);
+    check(deadlineCells >= target.minDeadlineCells,
+      `${tag} too few cells with extractable deadlines: ${deadlineCells}`);
+    check(highlightable >= target.minHighlightable,
       `${tag} too few highlightable cells: ${highlightable}`);
 
     console.log(
-      `${tag} ok (${lifecycleTables.length} tables, ${data.labelCells.length} labelled cells, ${endDates} end dates, ${highlightable} highlightable)`
+      `${tag} ok (${lifecycleTables.length} tables, ${data.labelCells.length} labelled cells, ${deadlineCells} deadline cells, ${highlightable} highlightable)`
     );
   } finally {
     await context.close();
   }
 }
 
+// ---------------------------------------------------------------------------
+// Run.
+// ---------------------------------------------------------------------------
+
 try {
-  await checkApi();
+  await checkApi(API_TARGET);
   if (apiOnly) {
     console.log("[dom] skipped (--api-only)");
   } else {
     const { chromium } = await import("playwright");
     const browser = await chromium.launch();
     try {
-      for (const locale of LOCALES) {
-        await checkDom(browser, locale);
+      for (const target of DOM_TARGETS) {
+        await checkDomTarget(browser, target);
       }
-      await checkPlcDom(browser);
     } finally {
       await browser.close();
     }

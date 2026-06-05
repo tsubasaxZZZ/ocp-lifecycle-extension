@@ -101,7 +101,9 @@ src/lib.js               純粋ロジック(日付パース・分類・表検知
 src/content.js           コンテンツスクリプト(Shadow DOM探索・装飾・スタイル注入・Observer)
 src/options.html/.js     設定画面(閾値スライダー・プレビュー付き)
 _locales/en,ja           i18n メッセージ(キーは両言語で完全一致、CIで強制)
-scripts/check-structure.mjs  構造検証(API + Playwright DOM、英日両方)
+scripts/check-structure.mjs  構造検証。先頭の API_TARGET / DOM_TARGETS に
+                             対象(URL・ロケール・期待値)を宣言的に定義し、
+                             共通エンジンで検証する。対象追加=定義の追加
 scripts/build.sh         zip ビルド
 test/lib.test.js         ユニットテスト
 ```
