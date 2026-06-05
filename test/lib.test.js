@@ -139,6 +139,22 @@ test("isLifecycleHeaderSet: matches tables without Maintenance support (.NET sty
   ));
 });
 
+test("isLifecycleHeaderSet: matches tables without Full support (Ansible Core style)", () => {
+  assert.ok(lib.isLifecycleHeaderSet([
+    "Version", "Control Node Python", "Target Python/Powershell",
+    "General availability", "Maintenance Support 1", "Maintenance support 2",
+    "End of Life", "Extended life cycle support (ELS) add-on"
+  ]));
+});
+
+test("isGaLabel: matches GA headers and labels in both languages", () => {
+  assert.ok(lib.isGaLabel("General availability"));
+  assert.ok(lib.isGaLabel("general-availability"));
+  assert.ok(lib.isGaLabel("一般提供の開始 (GA) 日"));
+  assert.equal(lib.isGaLabel("Full support"), false);
+  assert.equal(lib.isGaLabel("End of Life"), false);
+});
+
 test("isLifecycleHeaderSet: rejects unrelated tables", () => {
   assert.equal(lib.isLifecycleHeaderSet(["Software Classification", "Provided Tools"]), false);
   assert.equal(lib.isLifecycleHeaderSet([]), false);

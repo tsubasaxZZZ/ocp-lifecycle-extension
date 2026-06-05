@@ -46,6 +46,8 @@ Click the extension's "Options" (or right-click the icon → Options) to:
 
 - Adjust the day thresholds for red and orange with sliders
 - Toggle the remaining-days badge, the legend, and the strikethrough
+- Optionally show a gray "Released 1095d ago" badge in the GA column
+  (off by default; the GA column is never colored)
 - Check the result in a live preview before saving
 
 Settings sync across your Chrome profiles via `chrome.storage.sync`.

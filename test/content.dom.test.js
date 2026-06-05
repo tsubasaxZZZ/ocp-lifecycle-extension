@@ -10,7 +10,7 @@ const CONTENT_JS = fs.readFileSync(path.join(__dirname, "../src/content.js"), "u
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function setupPage(url, bodyHtml) {
+function setupPage(url, bodyHtml, stored) {
   const dom = new JSDOM(`<!DOCTYPE html><html><body>${bodyHtml}</body></html>`, { url });
   global.window = dom.window;
   global.document = dom.window.document;
@@ -21,11 +21,12 @@ function setupPage(url, bodyHtml) {
       getMessage: (key, subs) => {
         if (key === "badgeDaysLeft") return `あと${subs[0]}日`;
         if (key === "badgeEndedAgo") return `終了済み(${subs[0]}日前)`;
+        if (key === "badgeReleasedAgo") return `リリースから${subs[0]}日`;
         return key;
       }
     },
     storage: {
-      sync: { get: (defaults, cb) => cb(Object.assign({}, defaults)) },
+      sync: { get: (defaults, cb) => cb(Object.assign({}, defaults, stored || {})) },
       onChanged: { addListener: () => {} }
     }
   };
@@ -165,6 +166,90 @@ test("All-products page: .NET-style table (no Maintenance support column) is dec
   assert.match(cls("Full support"), /ocp-lh-ok/, "full support range decorated");
   assert.match(cls("End of Life"), /ocp-lh-ok/, "End of Life column decorated");
   assert.ok(sr.querySelector(".ocp-lh-legend"), "legend inserted");
+});
+
+test("All-products page: Ansible Core style table (no Full support column) is decorated", async () => {
+  setupPage("https://access.redhat.com/product-life-cycles", `<div id="ph"></div>`);
+  await sleep(50);
+
+  const host = document.createElement("plcc-table");
+  const sr = host.attachShadow({ mode: "open" });
+  sr.innerHTML = `
+    <table><thead><tr>
+      <th>Version</th><th>Control Node Python</th><th>Target Python/Powershell</th>
+      <th>General availability</th><th>Maintenance Support 1</th><th>Maintenance support 2</th>
+      <th>End of Life</th><th>Extended life cycle support (ELS) add-on</th>
+    </tr></thead></table>
+    <table><tbody><tr>
+      <th data-label="Version">ansible-core 2.18</th>
+      <td data-label="Control Node Python">Python 3.11 - 3.13</td>
+      <td data-label="Target Python/Powershell">Python 3.8 - 3.13 / PowerShell 5.1</td>
+      <td data-label="General availability"><div class="end-date"><pfe-datetime datetime="2024-11-04T00:00:00.000Z"></pfe-datetime></div></td>
+      <td data-label="Maintenance Support 1"><div class="start-date"><pfe-datetime datetime="2024-11-04T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date"><pfe-datetime datetime="2025-05-19T00:00:00.000Z"></pfe-datetime></div></td>
+      <td data-label="Maintenance support 2"><div class="start-date"><pfe-datetime datetime="2025-05-20T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date"><pfe-datetime datetime="2025-11-03T00:00:00.000Z"></pfe-datetime></div></td>
+      <td data-label="End of Life"><div class="end-date"><pfe-datetime datetime="2099-05-01T00:00:00.000Z"></pfe-datetime></div></td>
+      <td data-label="Extended life cycle support (ELS) add-on">N/A</td>
+    </tr></tbody></table>`;
+  document.getElementById("ph").appendChild(host);
+  await sleep(600);
+
+  const cls = (label) => [...sr.querySelector(`td[data-label="${label}"]`).classList].join(" ");
+  assert.equal(cls("Control Node Python"), "", "python range not mistaken for a date");
+  assert.equal(cls("Target Python/Powershell"), "", "python/powershell text skipped");
+  assert.equal(cls("General availability"), "", "GA excluded from coloring");
+  assert.match(cls("Maintenance Support 1"), /ocp-lh-expired/, "expired range decorated");
+  assert.match(cls("Maintenance support 2"), /ocp-lh-expired/, "second maintenance range decorated");
+  assert.match(cls("End of Life"), /ocp-lh-ok/, "EOL decorated");
+  assert.equal(cls("Extended life cycle support (ELS) add-on"), "", "N/A skipped");
+  assert.ok(sr.querySelector(".ocp-lh-legend"), "legend inserted");
+});
+
+test("GA badge: opt-in setting shows days since release without coloring", async () => {
+  setupPage("https://access.redhat.com/product-life-cycles", `<div id="ph"></div>`, { showGaBadge: true });
+  await sleep(50);
+
+  const host = document.createElement("plcc-table");
+  const sr = host.attachShadow({ mode: "open" });
+  sr.innerHTML = `
+    <table><thead><tr>
+      <th>Version</th><th>General availability</th><th>Full support</th>
+    </tr></thead></table>
+    <table><tbody><tr>
+      <th data-label="Version">9</th>
+      <td data-label="General availability"><div class="end-date"><pfe-datetime datetime="2022-05-18T00:00:00.000Z"></pfe-datetime></div></td>
+      <td data-label="Full support"><div class="start-date"><pfe-datetime datetime="2022-05-18T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date"><pfe-datetime datetime="2099-05-31T00:00:00.000Z"></pfe-datetime></div></td>
+    </tr></tbody></table>`;
+  document.getElementById("ph").appendChild(host);
+  await sleep(600);
+
+  const ga = sr.querySelector('td[data-label="General availability"]');
+  const badge = ga.querySelector(".ocp-lh-badge-ga");
+  assert.ok(badge, "GA badge present when enabled");
+  assert.match(badge.textContent, /リリースから\d+日/);
+  assert.equal([...ga.classList].join(" "), "", "GA cell still has no color classes");
+});
+
+test("GA badge: absent by default", async () => {
+  setupPage("https://access.redhat.com/product-life-cycles", `<div id="ph"></div>`);
+  await sleep(50);
+
+  const host = document.createElement("plcc-table");
+  const sr = host.attachShadow({ mode: "open" });
+  sr.innerHTML = `
+    <table><thead><tr><th>Version</th><th>General availability</th><th>Full support</th></tr></thead></table>
+    <table><tbody><tr>
+      <th data-label="Version">9</th>
+      <td data-label="General availability"><div class="end-date"><pfe-datetime datetime="2022-05-18T00:00:00.000Z"></pfe-datetime></div></td>
+      <td data-label="Full support"><div class="start-date"><pfe-datetime datetime="2022-05-18T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date"><pfe-datetime datetime="2099-05-31T00:00:00.000Z"></pfe-datetime></div></td>
+    </tr></tbody></table>`;
+  document.getElementById("ph").appendChild(host);
+  await sleep(600);
+
+  assert.equal(
+    sr.querySelector('td[data-label="General availability"] .ocp-lh-badge-ga'),
+    null,
+    "no GA badge by default"
+  );
 });
 
 test("All-products page: table with no parseable deadlines gets no legend", async () => {

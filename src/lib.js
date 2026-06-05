@@ -25,14 +25,12 @@
     warnDays: 180,
     showBadge: true,
     showLegend: true,
-    strikeExpired: true
+    strikeExpired: true,
+    showGaBadge: false
   };
 
-  var REQUIRED_HEADER_SETS = [
-    [/general availability/i, /full support/i],
-    [/一般提供/, /フルサポート/]
-  ];
-  var REQUIRED_HEADERS = REQUIRED_HEADER_SETS[0];
+  var GA_RE = /general[\s-]?availability|一般提供/i;
+
   var EXCLUDED_HEADERS = [/general availability/i, /^version/i, /一般提供/, /^バージョン/];
   var EXCLUDED_LABELS = [/general[\s-]?availability/i, /^version$/i, /一般提供/, /^バージョン$/];
 
@@ -102,11 +100,7 @@
   }
 
   function isLifecycleHeaderSet(headers) {
-    return REQUIRED_HEADER_SETS.some(function (set) {
-      return set.every(function (re) {
-        return headers.some(function (h) { return re.test(h); });
-      });
-    });
+    return headers.some(function (h) { return isGaLabel(h); });
   }
 
   function isExcludedColumn(headerText) {
@@ -117,6 +111,10 @@
     return EXCLUDED_LABELS.some(function (re) { return re.test(label || ""); });
   }
 
+  function isGaLabel(text) {
+    return GA_RE.test(text || "");
+  }
+
   function sanitizeSettings(raw) {
     var s = Object.assign({}, DEFAULTS, raw || {});
     s.dangerDays = clampInt(s.dangerDays, 1, 3650, DEFAULTS.dangerDays);
@@ -125,6 +123,7 @@
     s.showBadge = !!s.showBadge;
     s.showLegend = !!s.showLegend;
     s.strikeExpired = !!s.strikeExpired;
+    s.showGaBadge = !!s.showGaBadge;
     return s;
   }
 
@@ -136,7 +135,6 @@
 
   var api = {
     DEFAULTS: DEFAULTS,
-    REQUIRED_HEADERS: REQUIRED_HEADERS,
     parseDateFromText: parseDateFromText,
     parseDeadlineFromText: parseDeadlineFromText,
     parseDateTimeAttr: parseDateTimeAttr,
@@ -145,6 +143,7 @@
     isLifecycleHeaderSet: isLifecycleHeaderSet,
     isExcludedColumn: isExcludedColumn,
     isExcludedLabel: isExcludedLabel,
+    isGaLabel: isGaLabel,
     sanitizeSettings: sanitizeSettings
   };
 

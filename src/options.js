@@ -25,7 +25,8 @@
       warnDays: $("warn").value,
       showBadge: $("opt-badge").checked,
       showLegend: $("opt-legend").checked,
-      strikeExpired: $("opt-strike").checked
+      strikeExpired: $("opt-strike").checked,
+      showGaBadge: $("opt-ga-badge").checked
     });
   }
 
@@ -42,6 +43,7 @@
 
     var showBadge = $("opt-badge").checked;
     var strike = $("opt-strike").checked;
+    var showGaBadge = $("opt-ga-badge").checked;
     var today = new Date();
     $("today-out").textContent = today.toLocaleDateString();
 
@@ -59,6 +61,12 @@
       var tdGA = document.createElement("td");
       tdGA.style.color = "#777";
       tdGA.textContent = fmtDate(offsetDate(today, row.gaOff));
+      if (showGaBadge && row.gaOff < 0) {
+        var gaBadge = document.createElement("span");
+        gaBadge.className = "badge badge-ga";
+        gaBadge.textContent = msg("badgeReleasedAgo", [String(-row.gaOff)]);
+        tdGA.appendChild(gaBadge);
+      }
       tr.appendChild(tdGA);
 
       ["fsOff", "msOff"].forEach(function (key) {
@@ -89,10 +97,11 @@
     $("opt-badge").checked = s.showBadge;
     $("opt-legend").checked = s.showLegend;
     $("opt-strike").checked = s.strikeExpired;
+    $("opt-ga-badge").checked = s.showGaBadge;
     renderPreview();
   }
 
-  ["danger", "warn", "opt-badge", "opt-legend", "opt-strike"].forEach(function (id) {
+  ["danger", "warn", "opt-badge", "opt-legend", "opt-strike", "opt-ga-badge"].forEach(function (id) {
     $(id).addEventListener("input", renderPreview);
   });
 

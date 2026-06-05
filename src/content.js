@@ -8,6 +8,7 @@
     "td.ocp-lh-ok { background-color: #c0dd97 !important; color: #173404 !important; }",
     "td.ocp-lh-strike { text-decoration: line-through; }",
     ".ocp-lh-badge { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 8px; font-size: 11px; font-weight: 600; line-height: 1.5; background-color: rgba(255,255,255,0.65); color: inherit; text-decoration: none; white-space: nowrap; }",
+    ".ocp-lh-badge-ga { background-color: #ececec; color: #555; font-weight: 500; }",
     ".ocp-lh-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin: 10px 0; font-size: 12px; color: #444; }",
     ".ocp-lh-legend-title { font-weight: 600; }",
     ".ocp-lh-legend-item { display: inline-flex; align-items: center; gap: 5px; }",
@@ -114,6 +115,19 @@
     return OCPLH.parseDeadlineFromText(cell.textContent || "");
   }
 
+  function decorateGaCell(cell, today) {
+    if (!settings.showGaBadge) return false;
+    var date = cellDeadline(cell);
+    if (!date) return false;
+    var diff = OCPLH.daysUntil(date, today);
+    if (diff >= 0) return false;
+    var badge = document.createElement("span");
+    badge.className = "ocp-lh-badge ocp-lh-badge-ga";
+    badge.textContent = msg("badgeReleasedAgo", [String(-diff)]);
+    cell.appendChild(badge);
+    return true;
+  }
+
   function decorateCell(cell, today) {
     var date = cellDeadline(cell);
     if (!date) return false;
@@ -141,17 +155,20 @@
     if (!headerTable) return false;
 
     var decorated = 0;
+    var gaBadges = 0;
     var cells = root.querySelectorAll("td[data-label], td[headers]");
     for (var i = 0; i < cells.length; i++) {
       var label = cellLabel(cells[i]);
+      if (OCPLH.isGaLabel(label)) {
+        if (decorateGaCell(cells[i], today)) gaBadges++;
+        continue;
+      }
       if (OCPLH.isExcludedLabel(label)) continue;
       if (decorateCell(cells[i], today)) decorated++;
     }
 
-    if (decorated > 0) {
-      if (settings.showLegend) insertLegend(headerTable);
-      ensureStyle(root);
-    }
+    if (decorated > 0 && settings.showLegend) insertLegend(headerTable);
+    if (decorated > 0 || gaBadges > 0) ensureStyle(root);
     return true;
   }
 
@@ -171,6 +188,10 @@
           if (cells[c].tagName !== "TD") continue;
           if (cells[c].hasAttribute("data-label") || cells[c].hasAttribute("headers")) continue;
           var header = headers[cells[c].cellIndex] || "";
+          if (OCPLH.isGaLabel(header)) {
+            decorateGaCell(cells[c], today);
+            continue;
+          }
           if (OCPLH.isExcludedColumn(header)) continue;
           if (decorateCell(cells[c], today)) decorated++;
         }

@@ -6,7 +6,7 @@ const apiOnly = process.argv.includes("--api-only");
 
 const PAGE_URL = "https://access.redhat.com/support/policy/updates/openshift";
 const PLC_PAGE_URL =
-  "https://access.redhat.com/product-life-cycles?product=Red%20Hat%20Enterprise%20Linux,Red%20Hat%20OpenShift%20Container%20Platform,Red%20Hat%20OpenShift%20Serverless%20Logic%20Operator,.NET";
+  "https://access.redhat.com/product-life-cycles?product=Red%20Hat%20Enterprise%20Linux,Red%20Hat%20OpenShift%20Container%20Platform,Red%20Hat%20OpenShift%20Serverless%20Logic%20Operator,.NET,Ansible%20Core";
 const API_URL =
   "https://access.redhat.com/product-life-cycles/api/v1/products?name=OpenShift%20Container%20Platform%204";
 
@@ -196,8 +196,8 @@ async function checkPlcDom(browser) {
     const data = await page.evaluate(collectPageData);
 
     const lifecycleTables = data.headerRows.filter((h) => lib.isLifecycleHeaderSet(h));
-    check(lifecycleTables.length >= 3,
-      `${tag} expected >= 3 lifecycle tables (RHEL/OCP/.NET at minimum), found ${lifecycleTables.length}. Header rows: ${JSON.stringify(data.headerRows.filter((h) => h.length > 0).slice(0, 10))}`);
+    check(lifecycleTables.length >= 4,
+      `${tag} expected >= 4 lifecycle tables (RHEL/OCP/.NET/Ansible at minimum), found ${lifecycleTables.length}. Header rows: ${JSON.stringify(data.headerRows.filter((h) => h.length > 0).slice(0, 10))}`);
 
     const labels = new Set(data.labelCells.map((c) => c.label));
     for (const expected of ["General availability", "Full support", "Maintenance support"]) {
