@@ -36,7 +36,34 @@ jobs:
       - name: Build extension zip
         run: npm run build
 
+      - name: Check version already on Chrome Web Store
+        id: store
+        env:
+          EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          ACCESS_TOKEN=$(curl -fsS -X POST https://oauth2.googleapis.com/token \
+            -d client_id="$CLIENT_ID" \
+            -d client_secret="$CLIENT_SECRET" \
+            -d refresh_token="$REFRESH_TOKEN" \
+            -d grant_type=refresh_token | jq -r .access_token)
+          STORE_VERSION=$(curl -fsS \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID?projection=DRAFT" \
+            | jq -r '.crxVersion // empty')
+          MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
+          echo "Store version: ${STORE_VERSION:-<none>} / Manifest version: $MANIFEST_VERSION"
+          if [ -n "$STORE_VERSION" ] && [ "$STORE_VERSION" = "$MANIFEST_VERSION" ]; then
+            echo "Store already has $STORE_VERSION — skipping upload."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload and publish to Chrome Web Store
+        if: steps.store.outputs.skip != 'true'
         env:
           EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
           CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
@@ -51,6 +78,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.zip \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists — skipping."
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.zip \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi
