@@ -49,21 +49,31 @@ jobs:
             -d client_secret="$CLIENT_SECRET" \
             -d refresh_token="$REFRESH_TOKEN" \
             -d grant_type=refresh_token | jq -r .access_token)
-          STORE_VERSION=$(curl -fsS \
+          DRAFT_VERSION=$(curl -fsS \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID?projection=DRAFT" \
             | jq -r '.crxVersion // empty')
+          PUBLISHED_VERSION=$(curl -fsS \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID?projection=PUBLISHED" \
+            | jq -r '.crxVersion // empty')
           MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
-          echo "Store version: ${STORE_VERSION:-<none>} / Manifest version: $MANIFEST_VERSION"
-          if [ -n "$STORE_VERSION" ] && [ "$STORE_VERSION" = "$MANIFEST_VERSION" ]; then
-            echo "Store already has $STORE_VERSION — skipping upload."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+          echo "Draft: ${DRAFT_VERSION:-<none>} / Published: ${PUBLISHED_VERSION:-<none>} / Manifest: $MANIFEST_VERSION"
+          if [ -n "$DRAFT_VERSION" ] && [ "$DRAFT_VERSION" = "$MANIFEST_VERSION" ]; then
+            echo "Draft already has $DRAFT_VERSION — skipping upload."
+            echo "skip_upload=true" >> "$GITHUB_OUTPUT"
           else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "skip_upload=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$PUBLISHED_VERSION" ] && [ "$PUBLISHED_VERSION" = "$MANIFEST_VERSION" ]; then
+            echo "Published already has $PUBLISHED_VERSION — skipping publish."
+            echo "skip_publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip_publish=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload and publish to Chrome Web Store
-        if: steps.store.outputs.skip != 'true'
+      - name: Upload to Chrome Web Store
+        if: steps.store.outputs.skip_upload != 'true'
         env:
           EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
           PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
@@ -71,9 +81,18 @@ jobs:
           CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
         run: |
-          npx --yes chrome-webstore-upload-cli@4.0.1 upload \
-            --source dist/*.zip \
-            --auto-publish
+          npx --yes chrome-webstore-upload-cli@4.0.1 upload --source dist/*.zip
+
+      - name: Publish to Chrome Web Store
+        if: steps.store.outputs.skip_publish != 'true'
+        env:
+          EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          npx --yes chrome-webstore-upload-cli@4.0.1 publish
 
       - name: Create GitHub release
         env:
