@@ -129,6 +129,7 @@ Chrome Web Store API のクレデンシャル([取得手順](https://github.com/
 | Secret | 内容 |
 |---|---|
 | `CHROME_EXTENSION_ID` | ストアの拡張 ID(初回手動アップロード後に発行) |
+| `CHROME_PUBLISHER_ID` | デベロッパーダッシュボード Settings に表示される Publisher ID(`chrome-webstore-upload-cli` 4.x 必須) |
 | `CHROME_CLIENT_ID` | Google Cloud OAuth クライアント ID |
 | `CHROME_CLIENT_SECRET` | OAuth クライアントシークレット |
 | `CHROME_REFRESH_TOKEN` | リフレッシュトークン |
