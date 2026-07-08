@@ -16,9 +16,20 @@
     dec: 11, december: 11
   };
 
-  var EN_DATE_RE = /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2}),?\s+(\d{4})\b/i;
+  var EN_MONTH = "Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?";
+  var EN_DATE_RE = new RegExp("\\b(" + EN_MONTH + ")\\.?\\s+(\\d{1,2}),?\\s+(\\d{4})\\b", "i");
+  var EN_DATE_DD_MON_RE = new RegExp("\\b(\\d{1,2})\\s+(" + EN_MONTH + ")\\.?\\s+(\\d{4})\\b", "i");
   var ISO_DATE_RE = /\b(\d{4})-(\d{2})-(\d{2})\b/;
   var JA_DATE_RE = /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/;
+
+  function monthIndex(token) {
+    return MONTHS[(token || "").toLowerCase()];
+  }
+
+  function dateFromParts(year, month, day) {
+    if (month === undefined || day < 1 || day > 31) return null;
+    return new Date(year, month, day);
+  }
 
   var DEFAULTS = {
     dangerDays: 90,
@@ -38,11 +49,19 @@
     if (!text) return null;
     var m = EN_DATE_RE.exec(text);
     if (m) {
-      var month = MONTHS[m[1].toLowerCase()];
-      var day = parseInt(m[2], 10);
-      var year = parseInt(m[3], 10);
-      if (month === undefined || day < 1 || day > 31) return null;
-      return new Date(year, month, day);
+      return dateFromParts(
+        parseInt(m[3], 10),
+        monthIndex(m[1]),
+        parseInt(m[2], 10)
+      );
+    }
+    m = EN_DATE_DD_MON_RE.exec(text);
+    if (m) {
+      return dateFromParts(
+        parseInt(m[3], 10),
+        monthIndex(m[2]),
+        parseInt(m[1], 10)
+      );
     }
     m = ISO_DATE_RE.exec(text) || JA_DATE_RE.exec(text);
     if (m) {
@@ -59,6 +78,7 @@
     if (!text) return null;
     var globals = [
       new RegExp(EN_DATE_RE.source, "gi"),
+      new RegExp(EN_DATE_DD_MON_RE.source, "gi"),
       new RegExp(ISO_DATE_RE.source, "g"),
       new RegExp(JA_DATE_RE.source, "g")
     ];

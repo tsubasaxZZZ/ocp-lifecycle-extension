@@ -42,5 +42,25 @@ export const DOM_TARGETS = [
     minLabelCells: 20,
     minDeadlineCells: 20,
     minHighlightable: 15
+  },
+  {
+    name: "operators:en",
+    url: "https://access.redhat.com/support/policy/updates/openshift_operators",
+    locale: "en",
+    expectedLabels: ["General availability", "Full support ends", "Maintenance ends"],
+    minTables: 1,
+    minLabelCells: 500,
+    minDeadlineCells: 500,
+    minHighlightable: 500
+  },
+  {
+    name: "operators:ja",
+    url: "https://access.redhat.com/support/policy/updates/openshift_operators",
+    locale: "ja",
+    expectedLabels: ["General availability", "Full support ends", "Maintenance ends"],
+    minTables: 1,
+    minLabelCells: 500,
+    minDeadlineCells: 500,
+    minHighlightable: 500
   }
 ];
