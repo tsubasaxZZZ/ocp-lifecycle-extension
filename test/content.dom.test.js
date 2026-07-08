@@ -81,6 +81,35 @@ test("OpenShift page: shadow DOM table is decorated via text dates", async () =>
   assert.equal(document.querySelector("body > table .ocp-lh-cell"), null, "unrelated table untouched");
 });
 
+test("OpenShift Operators page: plain table with day-first dates is decorated", async () => {
+  setupPage(
+    "https://access.redhat.com/support/policy/updates/openshift_operators",
+    `<div id="ph"></div>`
+  );
+  await sleep(50);
+
+  document.getElementById("ph").innerHTML = `
+    <table><thead><tr>
+      <th>Version</th><th>Tier</th><th>OpenShift Version</th>
+      <th>General availability</th><th>Full support ends</th><th>Maintenance ends</th>
+    </tr></thead><tbody><tr>
+      <td data-label="Version">4.21</td>
+      <td data-label="Tier">Platform Aligned</td>
+      <td data-label="OpenShift Version">4.21</td>
+      <td data-label="General availability">09 Mar 2026</td>
+      <td data-label="Full support ends">4.22GA + 3 Months</td>
+      <td data-label="Maintenance ends">23 Aug 2027</td>
+    </tr></tbody></table>`;
+  await sleep(600);
+
+  const cls = (sel) => [...document.querySelector(sel).classList].join(" ");
+  assert.equal(cls('td[data-label="General availability"]'), "", "GA column must stay undecorated");
+  assert.equal(cls('td[data-label="Full support ends"]'), "", "relative date must stay undecorated");
+  assert.match(cls('td[data-label="Maintenance ends"]'), /ocp-lh-ok/, "day-first date should be ok");
+  assert.ok(document.querySelector(".ocp-lh-legend"), "legend inserted");
+  assert.ok(document.querySelector("style[data-ocp-lh]"), "style injected");
+});
+
 test("OpenShift page: decoration is re-applied after a re-render without duplicates", async () => {
   setupPage("https://access.redhat.com/support/policy/updates/openshift", `<div id="ph"></div>`);
   await sleep(50);

@@ -17,6 +17,14 @@ test("parseDateFromText: abbreviated month", () => {
   assert.equal(d.getDate(), 3);
 });
 
+test("parseDateFromText: day-first English month (OpenShift Operators page)", () => {
+  const d = lib.parseDateFromText("09 Mar 2026");
+  assert.equal(d.getFullYear(), 2026);
+  assert.equal(d.getMonth(), 2);
+  assert.equal(d.getDate(), 9);
+  assert.ok(lib.parseDateFromText("23 Aug 2027"));
+});
+
 test("parseDateFromText: abbreviated month with period and Sept", () => {
   assert.ok(lib.parseDateFromText("Sep. 17, 2025"));
   assert.ok(lib.parseDateFromText("Sept 17, 2025"));
@@ -66,6 +74,7 @@ test("parseDeadlineFromText: takes the last date in a range", () => {
 
 test("parseDeadlineFromText: single date and mixed strings", () => {
   assert.equal(lib.parseDeadlineFromText("March 17, 2026").getFullYear(), 2026);
+  assert.equal(lib.parseDeadlineFromText("09 Mar 2026").getDate(), 9);
   const mixed = lib.parseDeadlineFromText("GA of 4.22 + 3 Months to Dec 17, 2026");
   assert.equal(mixed.getFullYear(), 2026);
   assert.equal(mixed.getMonth(), 11);
