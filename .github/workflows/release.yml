@@ -1,13 +1,27 @@
 name: Release to Chrome Web Store
 
+# Two manual actions (plus legacy tag push):
+#   release  — bump version, tag, then publish
+#   publish  — publish an existing tag only (no bump; use for re-runs)
+#
+# Do one job well: versioning is separate from publishing.
+
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
     inputs:
+      action:
+        description: release = bump+tag+publish; publish = publish existing tag only
+        required: true
+        type: choice
+        options:
+          - release
+          - publish
+        default: release
       bump:
-        description: Version bump type (updates manifest.json + package.json, tags, then publishes)
+        description: Version bump (release action only)
         required: true
         type: choice
         options:
@@ -15,9 +29,12 @@ on:
           - minor
           - major
         default: patch
+      tag:
+        description: Existing tag to publish (publish action only), e.g. v0.2.4. Empty = latest v* tag
+        required: false
+        type: string
+        default: ""
 
-# GITHUB_TOKEN tag pushes do not re-trigger this workflow, so the
-# workflow_dispatch path bumps/tags and continues into publish in the same run.
 concurrency:
   group: chrome-web-store-release
   cancel-in-progress: false
@@ -33,7 +50,6 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          # Always release from main when manually triggered.
           ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -43,24 +59,26 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Decide VERSION and bump files locally only. Push/tag happen after tests.
-      # Resume (no bump) when a prior run left an unfinished release for CURRENT.
-      - name: Prepare version (manual release)
-        id: prep
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
-          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
-          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
-          GH_TOKEN: ${{ github.token }}
+      - name: Resolve version
+        id: ver
         run: |
           set -euo pipefail
-          git fetch origin main --tags --force
-          git checkout main
-          git reset --hard origin/main
 
-          CURRENT=$(node -p "require('./manifest.json').version")
+          remote_tag_exists() {
+            git ls-remote --exit-code --tags origin "refs/tags/$1" >/dev/null 2>&1
+          }
+
+          write_version() {
+            node -e '
+              const fs = require("fs");
+              const version = process.argv[1];
+              for (const file of ["manifest.json", "package.json"]) {
+                const json = JSON.parse(fs.readFileSync(file, "utf8"));
+                json.version = version;
+                fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
+              }
+            ' "$1"
+          }
 
           bump_version() {
             node -e '
@@ -75,151 +93,77 @@ jobs:
             ' "$1" "$2"
           }
 
-          semver_cmp() {
-            node -e '
-              const a = process.argv[1].split(".").map(Number);
-              const b = process.argv[2].split(".").map(Number);
-              for (let i = 0; i < 3; i++) {
-                const x = a[i] || 0, y = b[i] || 0;
-                if (x < y) { console.log(-1); process.exit(0); }
-                if (x > y) { console.log(1); process.exit(0); }
-              }
-              console.log(0);
-            ' "$1" "$2"
-          }
+          NEED_PUSH=false
 
-          remote_tag_exists() {
-            git ls-remote --exit-code --tags origin "refs/tags/$1" >/dev/null 2>&1
-          }
-
-          github_release_exists() {
-            gh release view "$1" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1
-          }
-
-          write_version() {
-            node -e '
-              const fs = require("fs");
-              const version = process.argv[1];
-              for (const file of ["manifest.json", "package.json"]) {
-                const json = JSON.parse(fs.readFileSync(file, "utf8"));
-                json.version = version;
-                fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
-              }
-            ' "$1"
-          }
-
-          # Store lookup is best-effort here: git-based resume must still work if
-          # OAuth/API is temporarily unavailable.
-          STORE_VERSION=""
-          if TOKEN_JSON=$(curl -fsS -X POST https://oauth2.googleapis.com/token \
-              -d client_id="$CLIENT_ID" \
-              -d client_secret="$CLIENT_SECRET" \
-              -d refresh_token="$REFRESH_TOKEN" \
-              -d grant_type=refresh_token); then
-            ACCESS_TOKEN=$(printf '%s' "$TOKEN_JSON" | jq -r .access_token)
-            if [ -n "$ACCESS_TOKEN" ] && [ "$ACCESS_TOKEN" != "null" ]; then
-              STORE_VERSION=$(curl -fsS \
-                -H "Authorization: Bearer $ACCESS_TOKEN" \
-                "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID?projection=DRAFT" \
-                | jq -r '.crxVersion // empty' || true)
-            else
-              echo "Warning: could not obtain store access token; continuing with git-based resume checks"
-            fi
-          else
-            echo "Warning: store OAuth request failed; continuing with git-based resume checks"
-          fi
-          echo "Store version: ${STORE_VERSION:-<none>} / main version: $CURRENT"
-
-          if [ -n "$STORE_VERSION" ]; then
-            CMP=$(semver_cmp "$CURRENT" "$STORE_VERSION")
-            if [ "$CMP" -lt 0 ]; then
-              echo "main version $CURRENT is behind Chrome Web Store $STORE_VERSION; refusing to publish an older build"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Legacy: tag already pushed by hand.
+            TAG="$GITHUB_REF_NAME"
+            VERSION="${TAG#v}"
+            MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
+            if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
+              echo "Tag $TAG does not match manifest version $MANIFEST_VERSION"
               exit 1
             fi
-          fi
 
-          NEED_PUSH_COMMIT=false
-          NEED_PUSH_TAG=false
-          RESUME=false
-          RESUME_REASON=""
-          HEAD_SUBJECT=$(git log -1 --pretty=%s)
-          TAG_EXISTS=false
-          RELEASE_EXISTS=false
-          remote_tag_exists "v$CURRENT" && TAG_EXISTS=true
-          github_release_exists "v$CURRENT" && RELEASE_EXISTS=true
-
-          if [ -n "$STORE_VERSION" ] && [ "$(semver_cmp "$CURRENT" "$STORE_VERSION")" -gt 0 ]; then
-            RESUME=true
-            RESUME_REASON="main ahead of store ($CURRENT > $STORE_VERSION)"
-          elif [ "$HEAD_SUBJECT" = "Bump version to $CURRENT" ] && { [ "$TAG_EXISTS" = "false" ] || [ "$RELEASE_EXISTS" = "false" ]; }; then
-            # Bump commit is on main but tag and/or GitHub Release did not finish.
-            RESUME=true
-            RESUME_REASON="unfinished release for $CURRENT (tag=${TAG_EXISTS}, github_release=${RELEASE_EXISTS})"
-          elif [ "$TAG_EXISTS" = "true" ] && [ "$RELEASE_EXISTS" = "false" ]; then
-            RESUME=true
-            RESUME_REASON="tag v$CURRENT exists but GitHub Release is missing"
-          fi
-
-          if [ "$RESUME" = "true" ]; then
-            VERSION="$CURRENT"
-            echo "Resuming publish for v$VERSION ($RESUME_REASON)"
-            if [ "$TAG_EXISTS" = "false" ]; then
-              NEED_PUSH_TAG=true
+          elif [ "${{ inputs.action }}" = "publish" ]; then
+            git fetch origin main --tags --force
+            TAG="${{ inputs.tag }}"
+            if [ -z "$TAG" ]; then
+              TAG=$(git ls-remote --tags --refs origin 'refs/tags/v*' \
+                | awk -F/ '{print $NF}' \
+                | sort -V \
+                | tail -1)
             fi
+            if [ -z "$TAG" ]; then
+              echo "No tag specified and no v* tags found on origin"
+              exit 1
+            fi
+            case "$TAG" in
+              v*) ;;
+              *) TAG="v$TAG" ;;
+            esac
+            if ! remote_tag_exists "$TAG"; then
+              echo "Remote tag $TAG does not exist"
+              exit 1
+            fi
+            git checkout "$TAG"
+            VERSION="${TAG#v}"
+            MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
+            if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
+              echo "Tag $TAG does not match manifest version $MANIFEST_VERSION"
+              exit 1
+            fi
+
           else
+            # action=release: bump on main tip, push after tests.
+            git fetch origin main --tags --force
+            git checkout main
+            git reset --hard origin/main
+
+            CURRENT=$(node -p "require('./manifest.json').version")
             VERSION=$(bump_version "$CURRENT" "${{ inputs.bump }}")
-            if remote_tag_exists "v$VERSION"; then
-              echo "Remote tag v$VERSION already exists; refusing to bump again"
+            TAG="v$VERSION"
+
+            if remote_tag_exists "$TAG"; then
+              echo "Remote tag $TAG already exists. Use action=publish to re-publish it."
               exit 1
             fi
+
             write_version "$VERSION"
-            NEED_PUSH_COMMIT=true
-            NEED_PUSH_TAG=true
-            echo "Prepared local bump $CURRENT → $VERSION (push deferred until tests pass)"
+            NEED_PUSH=true
+            echo "Prepared local bump $CURRENT → $VERSION"
           fi
 
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-          echo "need_push_commit=$NEED_PUSH_COMMIT" >> "$GITHUB_OUTPUT"
-          echo "need_push_tag=$NEED_PUSH_TAG" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve version (tag push)
-        id: tagver
-        if: github.event_name != 'workflow_dispatch'
-        run: |
-          set -euo pipefail
-          TAG="$GITHUB_REF_NAME"
-          VERSION="${TAG#v}"
-          MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
-          if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
-            echo "Tag $TAG does not match manifest version $MANIFEST_VERSION"
-            exit 1
-          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
-      - name: Expose release version
-        id: ver
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ steps.prep.outputs.version }}"
-            TAG="${{ steps.prep.outputs.tag }}"
-          else
-            VERSION="${{ steps.tagver.outputs.version }}"
-            TAG="${{ steps.tagver.outputs.tag }}"
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "need_push=$NEED_PUSH" >> "$GITHUB_OUTPUT"
           echo "Releasing $TAG"
 
       - name: Run unit and DOM tests
         run: npm test
 
-      # Push only after tests so a failed test cannot leave main/tags advanced.
-      # Build runs afterward so the zip matches the final main tip + version.
       - name: Commit, tag, and push
-        if: github.event_name == 'workflow_dispatch' && (steps.prep.outputs.need_push_commit == 'true' || steps.prep.outputs.need_push_tag == 'true')
+        if: steps.ver.outputs.need_push == 'true'
         run: |
           set -euo pipefail
           VERSION="${{ steps.ver.outputs.version }}"
@@ -228,57 +172,54 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # Re-sync in case main moved during tests, then re-apply VERSION.
           git fetch origin main --tags --force
           git checkout main
           git reset --hard origin/main
 
-          write_version() {
-            node -e '
-              const fs = require("fs");
-              const version = process.argv[1];
-              for (const file of ["manifest.json", "package.json"]) {
-                const json = JSON.parse(fs.readFileSync(file, "utf8"));
-                json.version = version;
-                fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
-              }
-            ' "$1"
-          }
+          node -e '
+            const fs = require("fs");
+            const version = process.argv[1];
+            for (const file of ["manifest.json", "package.json"]) {
+              const json = JSON.parse(fs.readFileSync(file, "utf8"));
+              json.version = version;
+              fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
+            }
+          ' "$VERSION"
 
-          if [ "${{ steps.prep.outputs.need_push_commit }}" = "true" ]; then
-            write_version "$VERSION"
-            git add manifest.json package.json
-            if git diff --cached --quiet; then
-              echo "Version $VERSION already on origin/main; skipping bump commit"
-            else
-              git commit -m "Bump version to $VERSION"
-              git push origin main
-            fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Remote tag $TAG appeared during the run; aborting to avoid overwrite"
+            exit 1
           fi
 
-          if [ "${{ steps.prep.outputs.need_push_tag }}" = "true" ]; then
-            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-              echo "Remote tag $TAG already exists; skipping tag push"
-            else
-              git fetch origin main
-              git reset --hard origin/main
-              git tag -a "$TAG" -m "$TAG"
-              git push origin "$TAG"
-            fi
+          git add manifest.json package.json
+          if git diff --cached --quiet; then
+            echo "origin/main already at $VERSION"
+          else
+            git commit -m "Bump version to $VERSION"
+            git push origin main
           fi
-          echo "Pushed commit/tag for $TAG"
+
+          git fetch origin main
+          git reset --hard origin/main
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+          echo "Pushed $TAG"
 
       - name: Build extension zip
         run: npm run build
 
-      - name: Check version already on Chrome Web Store
-        id: store
+      - name: Upload to Chrome Web Store
         env:
           EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+          PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
           CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
         run: |
           set -euo pipefail
+          VERSION="${{ steps.ver.outputs.version }}"
+
           TOKEN_JSON=$(curl -fsS -X POST https://oauth2.googleapis.com/token \
             -d client_id="$CLIENT_ID" \
             -d client_secret="$CLIENT_SECRET" \
@@ -290,38 +231,27 @@ jobs:
             echo "$TOKEN_JSON" | jq -c '{error, error_description}' || true
             exit 1
           fi
+
           STORE_VERSION=$(curl -fsS \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID?projection=DRAFT" \
             | jq -r '.crxVersion // empty')
-          MANIFEST_VERSION="${{ steps.ver.outputs.version }}"
-          echo "Store version: ${STORE_VERSION:-<none>} / Manifest version: $MANIFEST_VERSION"
-          if [ -n "$STORE_VERSION" ] && [ "$STORE_VERSION" = "$MANIFEST_VERSION" ]; then
-            echo "Store already has $STORE_VERSION — skipping upload."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "Store version: ${STORE_VERSION:-<none>} / releasing: $VERSION"
 
-      - name: Upload and publish to Chrome Web Store
-        if: steps.store.outputs.skip != 'true'
-        env:
-          EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
-          PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
-          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
-          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
-        run: |
-          npx --yes chrome-webstore-upload-cli@4.0.1 upload \
-            --source dist/*.zip \
-            --auto-publish
+          if [ -n "$STORE_VERSION" ] && [ "$STORE_VERSION" = "$VERSION" ]; then
+            echo "Store already has $VERSION — skipping upload."
+          else
+            npx --yes chrome-webstore-upload-cli@4.0.1 upload \
+              --source dist/*.zip \
+              --auto-publish
+          fi
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.ver.outputs.tag }}
         run: |
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists — skipping."
           else
             gh release create "$RELEASE_TAG" dist/*.zip \

@@ -51,9 +51,10 @@ npm run check:structure   # live-page validation (playwright)
 ## Workflow notes
 
 - `_locales/en` and `_locales/ja` must have identical message keys (CI enforces this).
-- Release: prefer Actions → **Release to Chrome Web Store** → Run workflow
-  (`patch`/`minor`/`major`). That bumps `manifest.json` + `package.json`, tags,
-  and publishes. Manual `v*` tag push still works; tag must match manifest version.
+- Release: Actions → **Release to Chrome Web Store**
+  - `action=release` + `bump=patch|minor|major`: bump, tag, publish
+  - `action=publish` (+ optional `tag`): re-publish an existing tag (no bump)
+  - Manual `v*` tag push still publishes; tag must match manifest version.
 - `structure-check.yml` runs daily against the live Red Hat pages; if it
   fails, the page structure likely changed — fix `src/lib.js` detection logic and
   the check expectations together, and verify with a real Playwright run
