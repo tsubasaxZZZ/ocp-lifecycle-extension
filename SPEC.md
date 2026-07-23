@@ -115,7 +115,7 @@ test/lib.test.js         ユニットテスト
 | ワークフロー | トリガー | 内容 |
 |---|---|---|
 | `ci.yml` | push / PR | テスト → manifest・ロケール検証 → zip ビルド → artifact |
-| `release.yml` | **手動 (`workflow_dispatch`)** / `v*` タグ push | 手動時は `patch`/`minor`/`major` で version バンプ→main へ commit&tag→テスト→Chrome Web Store へアップロード&公開→GitHub Release 作成。タグ push 時はバンプなしで同じ公開処理 |
+| `release.yml` | **手動 (`workflow_dispatch`)** / `v*` タグ push | 手動時は `patch`/`minor`/`major` で version を用意→テスト/ビルド成功後に main へ commit&tag→Chrome Web Store へアップロード&公開→GitHub Release 作成。失敗後の再実行は「main がストアより先」ならバンプせず再開。タグ push 時はバンプなしで同じ公開処理 |
 | `structure-check.yml` | 毎日 21:00 UTC (06:00 JST) / 手動 | Playwright で描画した実ページ(OCP・OpenShift Operators は**英語・日本語の両方**、全製品ページ)の表構造が拡張の想定と一致するか検証。**不一致なら fail し、Issue を自動起票** |
 
 ## リリース手順
