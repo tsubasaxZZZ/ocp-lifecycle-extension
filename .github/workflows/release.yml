@@ -45,8 +45,8 @@ jobs:
 
       # For workflow_dispatch: decide the target version and bump files locally
       # (no push yet). Push happens only after tests/build succeed.
-      # Re-run safety: if main is already ahead of the Chrome Web Store and
-      # tagged (or taggable) at that version, resume publish without bumping again.
+      # Re-run safety: resume without bumping when main is already ahead of the
+      # store, or when a prior run left a bump commit / tag unpublished.
       - name: Prepare version (manual release)
         id: prep
         if: github.event_name == 'workflow_dispatch'
@@ -55,6 +55,7 @@ jobs:
           CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git fetch origin main --tags --force
@@ -73,6 +74,20 @@ jobs:
               if (t === "major") console.log(`${maj + 1}.0.0`);
               else if (t === "minor") console.log(`${maj}.${min + 1}.0`);
               else console.log(`${maj}.${min}.${pat + 1}`);
+            ' "$1" "$2"
+          }
+
+          semver_cmp() {
+            # echo -1 / 0 / 1 for a<b / a==b / a>b
+            node -e '
+              const a = process.argv[1].split(".").map(Number);
+              const b = process.argv[2].split(".").map(Number);
+              for (let i = 0; i < 3; i++) {
+                const x = a[i] || 0, y = b[i] || 0;
+                if (x < y) { console.log(-1); process.exit(0); }
+                if (x > y) { console.log(1); process.exit(0); }
+              }
+              console.log(0);
             ' "$1" "$2"
           }
 
@@ -99,11 +114,35 @@ jobs:
 
           NEED_PUSH_COMMIT=false
           NEED_PUSH_TAG=false
+          RESUME=false
+          RESUME_REASON=""
 
-          if [ -n "$STORE_VERSION" ] && [ "$CURRENT" != "$STORE_VERSION" ]; then
-            # main already ahead of the store (previous run likely failed after bump).
+          if [ -n "$STORE_VERSION" ]; then
+            CMP=$(semver_cmp "$CURRENT" "$STORE_VERSION")
+            if [ "$CMP" -lt 0 ]; then
+              echo "main version $CURRENT is behind Chrome Web Store $STORE_VERSION; refusing to publish an older build"
+              exit 1
+            fi
+            if [ "$CMP" -gt 0 ]; then
+              RESUME=true
+              RESUME_REASON="main ahead of store ($CURRENT > $STORE_VERSION)"
+            fi
+          elif remote_tag_exists "v$CURRENT"; then
+            # Store API returned no version. Resume only if GitHub Release is also
+            # missing — otherwise this is a normal post-release state and we bump.
+            if ! gh release view "v$CURRENT" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              RESUME=true
+              RESUME_REASON="tag v$CURRENT exists but GitHub Release is missing (store version empty)"
+            fi
+          elif [ "$(git log -1 --pretty=%s)" = "Bump version to $CURRENT" ]; then
+            # Commit reached main, tag/store publish did not finish.
+            RESUME=true
+            RESUME_REASON="HEAD is bump commit for $CURRENT (store version empty, no tag yet)"
+          fi
+
+          if [ "$RESUME" = "true" ]; then
             VERSION="$CURRENT"
-            echo "Resuming publish for v$VERSION (main ahead of store; no bump)"
+            echo "Resuming publish for v$VERSION ($RESUME_REASON)"
             if ! remote_tag_exists "v$VERSION"; then
               NEED_PUSH_TAG=true
             fi
@@ -185,22 +224,36 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # Re-sync in case main moved during tests/build, then re-apply the
+          # known release version (avoids non-fast-forward and stash races).
+          git fetch origin main --tags --force
+          git checkout main
+          git reset --hard origin/main
+
           if [ "${{ steps.prep.outputs.need_push_commit }}" = "true" ]; then
+            node -e '
+              const fs = require("fs");
+              const version = process.argv[1];
+              for (const file of ["manifest.json", "package.json"]) {
+                const json = JSON.parse(fs.readFileSync(file, "utf8"));
+                json.version = version;
+                fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
+              }
+            ' "$VERSION"
             git add manifest.json package.json
             git commit -m "Bump version to $VERSION"
-          fi
-
-          if [ "${{ steps.prep.outputs.need_push_tag }}" = "true" ]; then
-            if ! git rev-parse "$TAG" >/dev/null 2>&1; then
-              git tag -a "$TAG" -m "$TAG"
-            fi
-          fi
-
-          if [ "${{ steps.prep.outputs.need_push_commit }}" = "true" ]; then
             git push origin main
           fi
+
           if [ "${{ steps.prep.outputs.need_push_tag }}" = "true" ]; then
-            git push origin "$TAG"
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+              echo "Remote tag $TAG already exists; skipping tag push"
+            else
+              git fetch origin main
+              git reset --hard origin/main
+              git tag -a "$TAG" -m "$TAG"
+              git push origin "$TAG"
+            fi
           fi
           echo "Pushed commit/tag for $TAG"
 
