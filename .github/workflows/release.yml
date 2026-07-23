@@ -5,6 +5,7 @@ name: Release to Chrome Web Store
 #   publish  — publish an existing tag only (no bump; use for re-runs)
 #
 # Do one job well: versioning is separate from publishing.
+# Invariant: install/test/build always run on the same git tree that is published.
 
 on:
   push:
@@ -56,9 +57,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install dependencies
-        run: npm ci
-
+      # Resolve the exact tree first (tag checkout or local bump), then install.
+      # Installing before checkout caused publish to test tag sources with main's node_modules.
       - name: Resolve version
         id: ver
         run: |
@@ -94,9 +94,10 @@ jobs:
           }
 
           NEED_PUSH=false
+          BASE_SHA=""
 
           if [ "${{ github.event_name }}" = "push" ]; then
-            # Legacy: tag already pushed by hand.
+            # Legacy: tag already pushed by hand. Checkout is already that tag.
             TAG="$GITHUB_REF_NAME"
             VERSION="${TAG#v}"
             MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
@@ -106,7 +107,7 @@ jobs:
             fi
 
           elif [ "${{ inputs.action }}" = "publish" ]; then
-            git fetch origin main --tags --force
+            git fetch origin --tags --force
             TAG="${{ inputs.tag }}"
             if [ -z "$TAG" ]; then
               TAG=$(git ls-remote --tags --refs origin 'refs/tags/v*' \
@@ -135,10 +136,11 @@ jobs:
             fi
 
           else
-            # action=release: bump on main tip, push after tests.
+            # action=release: bump on a fixed main tip; abort later if that tip moves.
             git fetch origin main --tags --force
             git checkout main
             git reset --hard origin/main
+            BASE_SHA=$(git rev-parse HEAD)
 
             CURRENT=$(node -p "require('./manifest.json').version")
             VERSION=$(bump_version "$CURRENT" "${{ inputs.bump }}")
@@ -151,13 +153,17 @@ jobs:
 
             write_version "$VERSION"
             NEED_PUSH=true
-            echo "Prepared local bump $CURRENT → $VERSION"
+            echo "Prepared local bump $CURRENT → $VERSION on $BASE_SHA"
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "need_push=$NEED_PUSH" >> "$GITHUB_OUTPUT"
-          echo "Releasing $TAG"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG (HEAD=$(git rev-parse --short HEAD))"
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Run unit and DOM tests
         run: npm test
@@ -168,14 +174,21 @@ jobs:
           set -euo pipefail
           VERSION="${{ steps.ver.outputs.version }}"
           TAG="${{ steps.ver.outputs.tag }}"
+          BASE_SHA="${{ steps.ver.outputs.base_sha }}"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Re-sync in case main moved during tests, then re-apply VERSION.
           git fetch origin main --tags --force
+          REMOTE_SHA=$(git rev-parse origin/main)
+          if [ "$REMOTE_SHA" != "$BASE_SHA" ]; then
+            echo "origin/main moved during tests ($BASE_SHA → $REMOTE_SHA)."
+            echo "Refusing to publish an untested tip. Re-run action=release."
+            exit 1
+          fi
+
           git checkout main
-          git reset --hard origin/main
+          git reset --hard "$BASE_SHA"
 
           node -e '
             const fs = require("fs");
@@ -194,17 +207,25 @@ jobs:
 
           git add manifest.json package.json
           if git diff --cached --quiet; then
-            echo "origin/main already at $VERSION"
+            echo "Tree already at $VERSION on $BASE_SHA"
           else
             git commit -m "Bump version to $VERSION"
             git push origin main
           fi
 
+          # Tag the commit we just made (or the existing bump on BASE_SHA).
           git fetch origin main
-          git reset --hard origin/main
+          if [ "$(git rev-parse origin/main)" != "$(git rev-parse HEAD)" ]; then
+            echo "origin/main changed during push; aborting before tag"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Remote tag $TAG appeared before tag push; aborting"
+            exit 1
+          fi
           git tag -a "$TAG" -m "$TAG"
           git push origin "$TAG"
-          echo "Pushed $TAG"
+          echo "Pushed $TAG at $(git rev-parse --short HEAD)"
 
       - name: Build extension zip
         run: npm run build

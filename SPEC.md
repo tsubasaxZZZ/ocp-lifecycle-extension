@@ -124,6 +124,9 @@ test/lib.test.js         ユニットテスト
 2. 通常: `action=release`, `bump=patch`（必要なら minor/major）
 3. 公開だけやり直すとき: `action=publish`（`tag` 空なら最新 `v*`、または `v0.2.4` を指定）
 
+不変条件: **install / test / build は、公開する git tree と同じものに対して行う**。
+`release` 中に `origin/main` が進んだら失敗して再実行を促す（未テスト tip は取り込まない）。
+
 従来どおり手動で version を上げて `v*` タグを push しても公開処理が走る。
 
 **やらないこと**: store バージョンとの比較による自動 resume。失敗したら `publish` で同じ tag を再実行する。
