@@ -11,7 +11,8 @@
   "scripts": {
     "test": "node --test \"test/*.test.js\"",
     "build": "bash scripts/build.sh",
-    "check:structure": "node scripts/check-structure.mjs"
+    "check:structure": "node scripts/check-structure.mjs",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "jsdom": "^29.1.1",

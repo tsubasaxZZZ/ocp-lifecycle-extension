@@ -4,7 +4,7 @@ name: Release to Chrome Web Store
 #   release  — bump version, tag, then publish
 #   publish  — publish an existing tag only (no bump; use for re-runs)
 #
-# Do one job well: versioning is separate from publishing.
+# Logic lives in scripts/release.mjs. This file only wires Actions I/O.
 # Invariant: install/test/build always run on the same git tree that is published.
 
 on:
@@ -57,110 +57,15 @@ jobs:
         with:
           node-version: 22
 
-      # Resolve the exact tree first (tag checkout or local bump), then install.
-      # Installing before checkout caused publish to test tag sources with main's node_modules.
       - name: Resolve version
         id: ver
-        run: |
-          set -euo pipefail
-
-          remote_tag_exists() {
-            git ls-remote --exit-code --tags origin "refs/tags/$1" >/dev/null 2>&1
-          }
-
-          write_version() {
-            node -e '
-              const fs = require("fs");
-              const version = process.argv[1];
-              for (const file of ["manifest.json", "package.json"]) {
-                const json = JSON.parse(fs.readFileSync(file, "utf8"));
-                json.version = version;
-                fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
-              }
-            ' "$1"
-          }
-
-          bump_version() {
-            node -e '
-              const [maj, min, pat] = process.argv[1].split(".").map(Number);
-              const t = process.argv[2];
-              if (!Number.isInteger(maj) || !Number.isInteger(min) || !Number.isInteger(pat)) {
-                throw new Error("Invalid version: " + process.argv[1]);
-              }
-              if (t === "major") console.log(`${maj + 1}.0.0`);
-              else if (t === "minor") console.log(`${maj}.${min + 1}.0`);
-              else console.log(`${maj}.${min}.${pat + 1}`);
-            ' "$1" "$2"
-          }
-
-          NEED_PUSH=false
-          BASE_SHA=""
-
-          if [ "${{ github.event_name }}" = "push" ]; then
-            # Legacy: tag already pushed by hand. Checkout is already that tag.
-            TAG="$GITHUB_REF_NAME"
-            VERSION="${TAG#v}"
-            MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
-            if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
-              echo "Tag $TAG does not match manifest version $MANIFEST_VERSION"
-              exit 1
-            fi
-
-          elif [ "${{ inputs.action }}" = "publish" ]; then
-            git fetch origin --tags --force
-            TAG="${{ inputs.tag }}"
-            if [ -z "$TAG" ]; then
-              TAG=$(git ls-remote --tags --refs origin 'refs/tags/v*' \
-                | awk -F/ '{print $NF}' \
-                | sort -V \
-                | tail -1)
-            fi
-            if [ -z "$TAG" ]; then
-              echo "No tag specified and no v* tags found on origin"
-              exit 1
-            fi
-            case "$TAG" in
-              v*) ;;
-              *) TAG="v$TAG" ;;
-            esac
-            if ! remote_tag_exists "$TAG"; then
-              echo "Remote tag $TAG does not exist"
-              exit 1
-            fi
-            git checkout "$TAG"
-            VERSION="${TAG#v}"
-            MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
-            if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
-              echo "Tag $TAG does not match manifest version $MANIFEST_VERSION"
-              exit 1
-            fi
-
-          else
-            # action=release: bump on a fixed main tip; abort later if that tip moves.
-            git fetch origin main --tags --force
-            git checkout main
-            git reset --hard origin/main
-            BASE_SHA=$(git rev-parse HEAD)
-
-            CURRENT=$(node -p "require('./manifest.json').version")
-            VERSION=$(bump_version "$CURRENT" "${{ inputs.bump }}")
-            TAG="v$VERSION"
-
-            if remote_tag_exists "$TAG"; then
-              echo "Remote tag $TAG already exists. Use action=publish to re-publish it."
-              exit 1
-            fi
-
-            write_version "$VERSION"
-            NEED_PUSH=true
-            echo "Prepared local bump $CURRENT → $VERSION on $BASE_SHA"
-          fi
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "need_push=$NEED_PUSH" >> "$GITHUB_OUTPUT"
-          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
-          echo "Releasing $TAG (HEAD=$(git rev-parse --short HEAD))"
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ACTION: ${{ inputs.action || 'release' }}
+          BUMP: ${{ inputs.bump || 'patch' }}
+          TAG_INPUT: ${{ inputs.tag || '' }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: node scripts/release.mjs resolve
 
       - name: Install dependencies
         run: npm ci
@@ -170,112 +75,28 @@ jobs:
 
       - name: Commit, tag, and push
         if: steps.ver.outputs.need_push == 'true'
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.ver.outputs.version }}"
-          TAG="${{ steps.ver.outputs.tag }}"
-          BASE_SHA="${{ steps.ver.outputs.base_sha }}"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git fetch origin main --tags --force
-          REMOTE_SHA=$(git rev-parse origin/main)
-          if [ "$REMOTE_SHA" != "$BASE_SHA" ]; then
-            echo "origin/main moved during tests ($BASE_SHA → $REMOTE_SHA)."
-            echo "Refusing to publish an untested tip. Re-run action=release."
-            exit 1
-          fi
-
-          git checkout main
-          git reset --hard "$BASE_SHA"
-
-          node -e '
-            const fs = require("fs");
-            const version = process.argv[1];
-            for (const file of ["manifest.json", "package.json"]) {
-              const json = JSON.parse(fs.readFileSync(file, "utf8"));
-              json.version = version;
-              fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
-            }
-          ' "$VERSION"
-
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Remote tag $TAG appeared during the run; aborting to avoid overwrite"
-            exit 1
-          fi
-
-          git add manifest.json package.json
-          if git diff --cached --quiet; then
-            echo "Tree already at $VERSION on $BASE_SHA"
-          else
-            git commit -m "Bump version to $VERSION"
-            git push origin main
-          fi
-
-          # Tag the commit we just made (or the existing bump on BASE_SHA).
-          git fetch origin main
-          if [ "$(git rev-parse origin/main)" != "$(git rev-parse HEAD)" ]; then
-            echo "origin/main changed during push; aborting before tag"
-            exit 1
-          fi
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Remote tag $TAG appeared before tag push; aborting"
-            exit 1
-          fi
-          git tag -a "$TAG" -m "$TAG"
-          git push origin "$TAG"
-          echo "Pushed $TAG at $(git rev-parse --short HEAD)"
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          BASE_SHA: ${{ steps.ver.outputs.base_sha }}
+        run: node scripts/release.mjs push
 
       - name: Build extension zip
         run: npm run build
 
       - name: Upload to Chrome Web Store
         env:
+          VERSION: ${{ steps.ver.outputs.version }}
           EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
           PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
           CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.ver.outputs.version }}"
-
-          TOKEN_JSON=$(curl -fsS -X POST https://oauth2.googleapis.com/token \
-            -d client_id="$CLIENT_ID" \
-            -d client_secret="$CLIENT_SECRET" \
-            -d refresh_token="$REFRESH_TOKEN" \
-            -d grant_type=refresh_token)
-          ACCESS_TOKEN=$(printf '%s' "$TOKEN_JSON" | jq -r .access_token)
-          if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
-            echo "Failed to obtain access token from Chrome Web Store OAuth credentials"
-            echo "$TOKEN_JSON" | jq -c '{error, error_description}' || true
-            exit 1
-          fi
-
-          STORE_VERSION=$(curl -fsS \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID?projection=DRAFT" \
-            | jq -r '.crxVersion // empty')
-          echo "Store version: ${STORE_VERSION:-<none>} / releasing: $VERSION"
-
-          if [ -n "$STORE_VERSION" ] && [ "$STORE_VERSION" = "$VERSION" ]; then
-            echo "Store already has $VERSION — skipping upload."
-          else
-            npx --yes chrome-webstore-upload-cli@4.0.1 upload \
-              --source dist/*.zip \
-              --auto-publish
-          fi
+        run: node scripts/release.mjs upload
 
       - name: Create GitHub release
         env:
+          TAG: ${{ steps.ver.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.ver.outputs.tag }}
-        run: |
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists — skipping."
-          else
-            gh release create "$RELEASE_TAG" dist/*.zip \
-              --title "$RELEASE_TAG" \
-              --generate-notes
-          fi
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/release.mjs github-release

@@ -51,7 +51,7 @@ npm run check:structure   # live-page validation (playwright)
 ## Workflow notes
 
 - `_locales/en` and `_locales/ja` must have identical message keys (CI enforces this).
-- Release: Actions → **Release to Chrome Web Store**
+- Release: Actions → **Release to Chrome Web Store** (`scripts/release.mjs`)
   - `action=release` + `bump=patch|minor|major`: bump, tag, publish
   - `action=publish` (+ optional `tag`): re-publish an existing tag (no bump)
   - Manual `v*` tag push still publishes; tag must match manifest version.
