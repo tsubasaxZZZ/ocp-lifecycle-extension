@@ -115,18 +115,18 @@ test/lib.test.js         ユニットテスト
 | ワークフロー | トリガー | 内容 |
 |---|---|---|
 | `ci.yml` | push / PR | テスト → manifest・ロケール検証 → zip ビルド → artifact |
-| `release.yml` | **手動 (`workflow_dispatch`)** / `v*` タグ push | 手動時は version を用意→テスト成功後に main へ commit&tag→**その tip で zip ビルド**→Chrome Web Store 公開→GitHub Release。未完了リリース(main>store / bump commit なのに tag か Release が欠けている)はバンプせず再開。タグ push 時はバンプなしで同じ公開処理 |
+| `release.yml` | **手動 (`workflow_dispatch`)** / `v*` タグ push | `action=release`: bump→test→commit&tag→build→store→GitHub Release。`action=publish`: 既存 tag を公開するだけ（再実行用、bump なし）。手動 `v*` タグ push も publish と同じ公開処理 |
 | `structure-check.yml` | 毎日 21:00 UTC (06:00 JST) / 手動 | Playwright で描画した実ページ(OCP・OpenShift Operators は**英語・日本語の両方**、全製品ページ)の表構造が拡張の想定と一致するか検証。**不一致なら fail し、Issue を自動起票** |
 
 ## リリース手順
 
-**通常は手動実行だけでよい**(version バンプとタグ付けを忘れないため):
-
 1. GitHub Actions → **Release to Chrome Web Store** → **Run workflow**
-2. `bump` に `patch` / `minor` / `major` を選んで実行
-3. workflow が `manifest.json` / `package.json` を更新して main に commit、`v*` タグを push し、ストア公開まで進める
+2. 通常: `action=release`, `bump=patch`（必要なら minor/major）
+3. 公開だけやり直すとき: `action=publish`（`tag` 空なら最新 `v*`、または `v0.2.4` を指定）
 
-従来どおり手動で version を上げて `v0.1.0` 形式のタグを push しても同じ公開処理が走る。
+従来どおり手動で version を上げて `v*` タグを push しても公開処理が走る。
+
+**やらないこと**: store バージョンとの比較による自動 resume。失敗したら `publish` で同じ tag を再実行する。
 
 ### 必要な GitHub Secrets
 
