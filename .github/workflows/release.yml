@@ -43,10 +43,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # For workflow_dispatch: decide the target version and bump files locally
-      # (no push yet). Push happens only after tests/build succeed.
-      # Re-run safety: resume without bumping when main is already ahead of the
-      # store, or when a prior run left a bump commit / tag unpublished.
+      # Decide VERSION and bump files locally only. Push/tag happen after tests.
+      # Resume (no bump) when a prior run left an unfinished release for CURRENT.
       - name: Prepare version (manual release)
         id: prep
         if: github.event_name == 'workflow_dispatch'
@@ -78,7 +76,6 @@ jobs:
           }
 
           semver_cmp() {
-            # echo -1 / 0 / 1 for a<b / a==b / a>b
             node -e '
               const a = process.argv[1].split(".").map(Number);
               const b = process.argv[2].split(".").map(Number);
@@ -95,63 +92,11 @@ jobs:
             git ls-remote --exit-code --tags origin "refs/tags/$1" >/dev/null 2>&1
           }
 
-          TOKEN_JSON=$(curl -fsS -X POST https://oauth2.googleapis.com/token \
-            -d client_id="$CLIENT_ID" \
-            -d client_secret="$CLIENT_SECRET" \
-            -d refresh_token="$REFRESH_TOKEN" \
-            -d grant_type=refresh_token)
-          ACCESS_TOKEN=$(printf '%s' "$TOKEN_JSON" | jq -r .access_token)
-          if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
-            echo "Failed to obtain access token from Chrome Web Store OAuth credentials"
-            echo "$TOKEN_JSON" | jq -c '{error, error_description}' || true
-            exit 1
-          fi
-          STORE_VERSION=$(curl -fsS \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID?projection=DRAFT" \
-            | jq -r '.crxVersion // empty')
-          echo "Store version: ${STORE_VERSION:-<none>} / main version: $CURRENT"
+          github_release_exists() {
+            gh release view "$1" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1
+          }
 
-          NEED_PUSH_COMMIT=false
-          NEED_PUSH_TAG=false
-          RESUME=false
-          RESUME_REASON=""
-
-          if [ -n "$STORE_VERSION" ]; then
-            CMP=$(semver_cmp "$CURRENT" "$STORE_VERSION")
-            if [ "$CMP" -lt 0 ]; then
-              echo "main version $CURRENT is behind Chrome Web Store $STORE_VERSION; refusing to publish an older build"
-              exit 1
-            fi
-            if [ "$CMP" -gt 0 ]; then
-              RESUME=true
-              RESUME_REASON="main ahead of store ($CURRENT > $STORE_VERSION)"
-            fi
-          elif remote_tag_exists "v$CURRENT"; then
-            # Store API returned no version. Resume only if GitHub Release is also
-            # missing — otherwise this is a normal post-release state and we bump.
-            if ! gh release view "v$CURRENT" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              RESUME=true
-              RESUME_REASON="tag v$CURRENT exists but GitHub Release is missing (store version empty)"
-            fi
-          elif [ "$(git log -1 --pretty=%s)" = "Bump version to $CURRENT" ]; then
-            # Commit reached main, tag/store publish did not finish.
-            RESUME=true
-            RESUME_REASON="HEAD is bump commit for $CURRENT (store version empty, no tag yet)"
-          fi
-
-          if [ "$RESUME" = "true" ]; then
-            VERSION="$CURRENT"
-            echo "Resuming publish for v$VERSION ($RESUME_REASON)"
-            if ! remote_tag_exists "v$VERSION"; then
-              NEED_PUSH_TAG=true
-            fi
-          else
-            VERSION=$(bump_version "$CURRENT" "${{ inputs.bump }}")
-            if remote_tag_exists "v$VERSION"; then
-              echo "Remote tag v$VERSION already exists; refusing to bump again"
-              exit 1
-            fi
+          write_version() {
             node -e '
               const fs = require("fs");
               const version = process.argv[1];
@@ -160,13 +105,74 @@ jobs:
                 json.version = version;
                 fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
               }
-            ' "$VERSION"
-            MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
-            PACKAGE_VERSION=$(node -p "require('./package.json').version")
-            if [ "$MANIFEST_VERSION" != "$VERSION" ] || [ "$PACKAGE_VERSION" != "$VERSION" ]; then
-              echo "Version mismatch after bump: manifest=$MANIFEST_VERSION package=$PACKAGE_VERSION expected=$VERSION"
+            ' "$1"
+          }
+
+          # Store lookup is best-effort here: git-based resume must still work if
+          # OAuth/API is temporarily unavailable.
+          STORE_VERSION=""
+          if TOKEN_JSON=$(curl -fsS -X POST https://oauth2.googleapis.com/token \
+              -d client_id="$CLIENT_ID" \
+              -d client_secret="$CLIENT_SECRET" \
+              -d refresh_token="$REFRESH_TOKEN" \
+              -d grant_type=refresh_token); then
+            ACCESS_TOKEN=$(printf '%s' "$TOKEN_JSON" | jq -r .access_token)
+            if [ -n "$ACCESS_TOKEN" ] && [ "$ACCESS_TOKEN" != "null" ]; then
+              STORE_VERSION=$(curl -fsS \
+                -H "Authorization: Bearer $ACCESS_TOKEN" \
+                "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID?projection=DRAFT" \
+                | jq -r '.crxVersion // empty' || true)
+            else
+              echo "Warning: could not obtain store access token; continuing with git-based resume checks"
+            fi
+          else
+            echo "Warning: store OAuth request failed; continuing with git-based resume checks"
+          fi
+          echo "Store version: ${STORE_VERSION:-<none>} / main version: $CURRENT"
+
+          if [ -n "$STORE_VERSION" ]; then
+            CMP=$(semver_cmp "$CURRENT" "$STORE_VERSION")
+            if [ "$CMP" -lt 0 ]; then
+              echo "main version $CURRENT is behind Chrome Web Store $STORE_VERSION; refusing to publish an older build"
               exit 1
             fi
+          fi
+
+          NEED_PUSH_COMMIT=false
+          NEED_PUSH_TAG=false
+          RESUME=false
+          RESUME_REASON=""
+          HEAD_SUBJECT=$(git log -1 --pretty=%s)
+          TAG_EXISTS=false
+          RELEASE_EXISTS=false
+          remote_tag_exists "v$CURRENT" && TAG_EXISTS=true
+          github_release_exists "v$CURRENT" && RELEASE_EXISTS=true
+
+          if [ -n "$STORE_VERSION" ] && [ "$(semver_cmp "$CURRENT" "$STORE_VERSION")" -gt 0 ]; then
+            RESUME=true
+            RESUME_REASON="main ahead of store ($CURRENT > $STORE_VERSION)"
+          elif [ "$HEAD_SUBJECT" = "Bump version to $CURRENT" ] && { [ "$TAG_EXISTS" = "false" ] || [ "$RELEASE_EXISTS" = "false" ]; }; then
+            # Bump commit is on main but tag and/or GitHub Release did not finish.
+            RESUME=true
+            RESUME_REASON="unfinished release for $CURRENT (tag=${TAG_EXISTS}, github_release=${RELEASE_EXISTS})"
+          elif [ "$TAG_EXISTS" = "true" ] && [ "$RELEASE_EXISTS" = "false" ]; then
+            RESUME=true
+            RESUME_REASON="tag v$CURRENT exists but GitHub Release is missing"
+          fi
+
+          if [ "$RESUME" = "true" ]; then
+            VERSION="$CURRENT"
+            echo "Resuming publish for v$VERSION ($RESUME_REASON)"
+            if [ "$TAG_EXISTS" = "false" ]; then
+              NEED_PUSH_TAG=true
+            fi
+          else
+            VERSION=$(bump_version "$CURRENT" "${{ inputs.bump }}")
+            if remote_tag_exists "v$VERSION"; then
+              echo "Remote tag v$VERSION already exists; refusing to bump again"
+              exit 1
+            fi
+            write_version "$VERSION"
             NEED_PUSH_COMMIT=true
             NEED_PUSH_TAG=true
             echo "Prepared local bump $CURRENT → $VERSION (push deferred until tests pass)"
@@ -210,10 +216,8 @@ jobs:
       - name: Run unit and DOM tests
         run: npm test
 
-      - name: Build extension zip
-        run: npm run build
-
-      # Push only after validation so a failed test cannot leave main/tags advanced.
+      # Push only after tests so a failed test cannot leave main/tags advanced.
+      # Build runs afterward so the zip matches the final main tip + version.
       - name: Commit, tag, and push
         if: github.event_name == 'workflow_dispatch' && (steps.prep.outputs.need_push_commit == 'true' || steps.prep.outputs.need_push_tag == 'true')
         run: |
@@ -224,13 +228,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Re-sync in case main moved during tests/build, then re-apply the
-          # known release version (avoids non-fast-forward and stash races).
           git fetch origin main --tags --force
           git checkout main
           git reset --hard origin/main
 
-          if [ "${{ steps.prep.outputs.need_push_commit }}" = "true" ]; then
+          write_version() {
             node -e '
               const fs = require("fs");
               const version = process.argv[1];
@@ -239,10 +241,18 @@ jobs:
                 json.version = version;
                 fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
               }
-            ' "$VERSION"
+            ' "$1"
+          }
+
+          if [ "${{ steps.prep.outputs.need_push_commit }}" = "true" ]; then
+            write_version "$VERSION"
             git add manifest.json package.json
-            git commit -m "Bump version to $VERSION"
-            git push origin main
+            if git diff --cached --quiet; then
+              echo "Version $VERSION already on origin/main; skipping bump commit"
+            else
+              git commit -m "Bump version to $VERSION"
+              git push origin main
+            fi
           fi
 
           if [ "${{ steps.prep.outputs.need_push_tag }}" = "true" ]; then
@@ -256,6 +266,9 @@ jobs:
             fi
           fi
           echo "Pushed commit/tag for $TAG"
+
+      - name: Build extension zip
+        run: npm run build
 
       - name: Check version already on Chrome Web Store
         id: store
