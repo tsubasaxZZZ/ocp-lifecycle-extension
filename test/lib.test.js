@@ -171,11 +171,14 @@ test("isLifecycleHeaderSet: rejects unrelated tables", () => {
 
 test("isExcludedLabel: GA and version labels excluded", () => {
   assert.ok(lib.isExcludedLabel("general-availability"));
+  assert.ok(lib.isExcludedLabel("General availability"));
   assert.ok(lib.isExcludedLabel("Version"));
   assert.equal(lib.isExcludedLabel("full-support"), false);
+  assert.equal(lib.isExcludedLabel("Full support"), false);
   assert.equal(lib.isExcludedLabel("maintenance-support"), false);
-  assert.equal(lib.isExcludedLabel("extended-update-support-add-on---term-1"), false);
-  assert.equal(lib.isExcludedLabel("extended-life-phase"), false);
+  assert.equal(lib.isExcludedLabel("Maintenance support"), false);
+  assert.equal(lib.isExcludedLabel("Extended Update Support Add-On - Term 1"), false);
+  assert.equal(lib.isExcludedLabel("Extended life phase"), false);
 });
 
 test("isExcludedColumn: GA and version columns excluded", () => {
@@ -187,6 +190,7 @@ test("isExcludedColumn: GA and version columns excluded", () => {
 
 test("isExcludedLabel/Column: Japanese GA and version excluded", () => {
   assert.ok(lib.isExcludedLabel("一般提供の開始-(ga)-日"));
+  assert.ok(lib.isExcludedLabel("一般提供の開始 (GA) 日"));
   assert.ok(lib.isExcludedLabel("バージョン"));
   assert.equal(lib.isExcludedLabel("フルサポート"), false);
   assert.equal(lib.isExcludedLabel("メンテナンスサポート"), false);

@@ -36,7 +36,7 @@ function setupPage(url, bodyHtml, stored) {
   return dom;
 }
 
-test("OpenShift page: shadow DOM table is decorated via text dates", async () => {
+test("OpenShift page: shadow DOM table is decorated via pfe-datetime end dates", async () => {
   setupPage(
     "https://access.redhat.com/support/policy/updates/openshift",
     `<div id="ph"></div>
@@ -47,34 +47,48 @@ test("OpenShift page: shadow DOM table is decorated via text dates", async () =>
 
   const host = document.createElement("plcc-table");
   const sr = host.attachShadow({ mode: "open" });
+  // Mirrors the live plcc-table: single table, human-readable data-labels,
+  // start/end pfe-datetime ranges (same contract as the all-products page).
   sr.innerHTML = `
-    <table class="hdr"><thead><tr>
+    <table class="product-lifecycle-info__table"><thead><tr>
       <th>Version</th><th>General availability</th><th>Full support</th><th>Maintenance support</th>
-    </tr></thead></table>
-    <table><tbody><tr>
-      <th data-label="Version">4.21</th>
-      <td data-label="general-availability">February 3, 2026</td>
-      <td data-label="full-support">GA of 4.22 + 3 Months</td>
-      <td data-label="maintenance-support">August 3, 2099</td>
-    </tr></tbody></table>
-    <table><tbody><tr>
-      <th data-label="Version">4.17</th>
-      <td data-label="general-availability">October 1, 2024</td>
-      <td data-label="full-support">May 25, 2025</td>
-      <td data-label="maintenance-support">April 1, 2026</td>
-    </tr></tbody></table>`;
+      <th>Extended Update Support Add-On - Term 1</th><th>Extended life phase</th>
+    </tr></thead><tbody>
+      <tr>
+        <td data-label="Version">4.21</td>
+        <td data-label="General availability"><div class="end-date"><pfe-datetime datetime="2026-02-03T00:00:00.000Z"></pfe-datetime></div></td>
+        <td data-label="Full support"><div class="start-date"><pfe-datetime datetime="2026-02-03T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date"><pfe-datetime datetime="2026-09-09T00:00:00.000Z"></pfe-datetime></div></td>
+        <td data-label="Maintenance support"><div class="start-date"><pfe-datetime datetime="2026-09-10T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date"><pfe-datetime datetime="2099-08-03T00:00:00.000Z"></pfe-datetime></div></td>
+        <td data-label="Extended Update Support Add-On - Term 1"><div class="na-text">N/A</div></td>
+        <td data-label="Extended life phase"><div class="na-text">N/A</div></td>
+      </tr>
+      <tr>
+        <td data-label="Version">4.14</td>
+        <td data-label="General availability"><div class="end-date"><pfe-datetime datetime="2023-10-31T00:00:00.000Z"></pfe-datetime></div></td>
+        <td data-label="Full support"><div class="start-date"><pfe-datetime datetime="2023-10-31T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date"><pfe-datetime datetime="2024-05-27T00:00:00.000Z"></pfe-datetime></div></td>
+        <td data-label="Maintenance support"><div class="start-date"><pfe-datetime datetime="2024-05-28T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date"><pfe-datetime datetime="2025-05-01T00:00:00.000Z"></pfe-datetime></div></td>
+        <td data-label="Extended Update Support Add-On - Term 1"><div class="start-date"><pfe-datetime datetime="2025-05-02T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date"><pfe-datetime datetime="2025-10-31T00:00:00.000Z"></pfe-datetime></div></td>
+        <td data-label="Extended life phase"><div class="na-text">N/A</div></td>
+      </tr>
+    </tbody></table>`;
   document.getElementById("ph").appendChild(host);
   await sleep(600);
 
   const cls = (sel) => [...sr.querySelector(sel).classList].join(" ");
-  assert.equal(cls('td[data-label="general-availability"]'), "", "GA column must stay undecorated");
-  assert.equal(cls('[data-label="full-support"]'), "", "unparseable cell must stay undecorated");
-  assert.match(cls('[data-label="maintenance-support"]'), /ocp-lh-ok/, "far-future date should be ok");
+  assert.equal(cls('td[data-label="General availability"]'), "", "GA column must stay undecorated");
+  assert.equal(cls('td[data-label="Extended Update Support Add-On - Term 1"]'), "", "N/A cell must stay undecorated");
+  assert.match(cls('td[data-label="Maintenance support"]'), /ocp-lh-ok/, "far-future date should be ok");
 
-  const expired = [...sr.querySelectorAll('[data-label="full-support"]')][1];
+  const row414 = [...sr.querySelectorAll("tr")].find((tr) =>
+    (tr.querySelector('[data-label="Version"]')?.textContent || "").trim() === "4.14"
+  );
+  const expired = row414.querySelector('[data-label="Full support"]');
   assert.match([...expired.classList].join(" "), /ocp-lh-expired/);
   assert.match([...expired.classList].join(" "), /ocp-lh-strike/);
   assert.match(expired.querySelector(".ocp-lh-badge").textContent, /終了済み\(\d+日前\)/);
+
+  const eus = row414.querySelector('[data-label="Extended Update Support Add-On - Term 1"]');
+  assert.match([...eus.classList].join(" "), /ocp-lh-expired/, "4.14 EUS Term 1 should be highlighted");
 
   assert.ok(sr.querySelector(".ocp-lh-legend"), "legend inserted in shadow root");
   assert.ok(sr.querySelector("style[data-ocp-lh]"), "style injected into shadow root");
@@ -119,22 +133,23 @@ test("OpenShift page: decoration is re-applied after a re-render without duplica
   sr.innerHTML = `
     <table><thead><tr>
       <th>Version</th><th>General availability</th><th>Full support</th><th>Maintenance support</th>
-    </tr></thead></table>
-    <table><tbody><tr>
-      <th data-label="Version">4.17</th>
-      <td data-label="general-availability">October 1, 2024</td>
-      <td data-label="full-support">May 25, 2025</td>
-      <td data-label="maintenance-support">April 1, 2026</td>
+    </tr></thead><tbody><tr>
+      <td data-label="Version">4.17</td>
+      <td data-label="General availability"><div class="end-date"><pfe-datetime datetime="2024-10-01T00:00:00.000Z"></pfe-datetime></div></td>
+      <td data-label="Full support"><div class="start-date"><pfe-datetime datetime="2024-10-01T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date"><pfe-datetime datetime="2025-05-25T00:00:00.000Z"></pfe-datetime></div></td>
+      <td data-label="Maintenance support"><div class="start-date"><pfe-datetime datetime="2025-05-26T00:00:00.000Z"></pfe-datetime></div><div class="date-separator">to</div><div class="end-date"><pfe-datetime datetime="2026-04-01T00:00:00.000Z"></pfe-datetime></div></td>
     </tr></tbody></table>`;
   document.getElementById("ph").appendChild(host);
   await sleep(600);
 
   const legendsBefore = sr.querySelectorAll(".ocp-lh-legend").length;
-  const cell = sr.querySelector('td[data-label="maintenance-support"]');
-  cell.textContent = "April 1, 2099";
+  const cell = sr.querySelector('td[data-label="Maintenance support"]');
+  cell.querySelector(".end-date pfe-datetime").setAttribute("datetime", "2099-04-01T00:00:00.000Z");
+  // Trigger MutationObserver by replacing the cell contents (Lit-style re-render).
+  cell.innerHTML = cell.innerHTML;
   await sleep(600);
 
-  const updated = sr.querySelector('td[data-label="maintenance-support"]');
+  const updated = sr.querySelector('td[data-label="Maintenance support"]');
   assert.match([...updated.classList].join(" "), /ocp-lh-ok/, "re-rendered cell re-decorated");
   assert.equal(updated.querySelectorAll(".ocp-lh-badge").length, 1, "exactly one badge after re-render");
   assert.equal(sr.querySelectorAll(".ocp-lh-legend").length, legendsBefore, "legend not duplicated");
