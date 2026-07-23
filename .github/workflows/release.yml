@@ -4,6 +4,23 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump type (updates manifest.json + package.json, tags, then publishes)
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+# GITHUB_TOKEN tag pushes do not re-trigger this workflow, so the
+# workflow_dispatch path bumps/tags and continues into publish in the same run.
+concurrency:
+  group: chrome-web-store-release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -13,6 +30,85 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          # Always release from main when manually triggered.
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
+
+      - name: Bump version, commit, and tag
+        id: bump
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+
+          CURRENT=$(node -p "require('./manifest.json').version")
+          NEW=$(node -e '
+            const [maj, min, pat] = process.argv[1].split(".").map(Number);
+            const t = process.argv[2];
+            if (!Number.isInteger(maj) || !Number.isInteger(min) || !Number.isInteger(pat)) {
+              throw new Error("Invalid version: " + process.argv[1]);
+            }
+            if (t === "major") console.log(`${maj + 1}.0.0`);
+            else if (t === "minor") console.log(`${maj}.${min + 1}.0`);
+            else console.log(`${maj}.${min}.${pat + 1}`);
+          ' "$CURRENT" "${{ inputs.bump }}")
+
+          if git rev-parse "v$NEW" >/dev/null 2>&1; then
+            echo "Tag v$NEW already exists"
+            exit 1
+          fi
+
+          node -e '
+            const fs = require("fs");
+            const version = process.argv[1];
+            for (const file of ["manifest.json", "package.json"]) {
+              const json = JSON.parse(fs.readFileSync(file, "utf8"));
+              json.version = version;
+              fs.writeFileSync(file, JSON.stringify(json, null, 2) + "\n");
+            }
+          ' "$NEW"
+
+          MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if [ "$MANIFEST_VERSION" != "$NEW" ] || [ "$PACKAGE_VERSION" != "$NEW" ]; then
+            echo "Version mismatch after bump: manifest=$MANIFEST_VERSION package=$PACKAGE_VERSION expected=$NEW"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json package.json
+          git commit -m "Bump version to $NEW"
+          git tag -a "v$NEW" -m "v$NEW"
+          git push origin main
+          git push origin "v$NEW"
+
+          echo "Bumped $CURRENT → $NEW and pushed tag v$NEW"
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve release version
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ steps.bump.outputs.version }}"
+            TAG="${{ steps.bump.outputs.tag }}"
+          else
+            TAG="$GITHUB_REF_NAME"
+            VERSION="${TAG#v}"
+          fi
+          MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
+          if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "Release version $VERSION does not match manifest version $MANIFEST_VERSION"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Releasing $TAG (manifest $MANIFEST_VERSION)"
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -23,15 +119,6 @@ jobs:
 
       - name: Run unit and DOM tests
         run: npm test
-
-      - name: Verify tag matches manifest version
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
-          if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match manifest version $MANIFEST_VERSION"
-            exit 1
-          fi
 
       - name: Build extension zip
         run: npm run build
@@ -44,16 +131,23 @@ jobs:
           CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
         run: |
-          ACCESS_TOKEN=$(curl -fsS -X POST https://oauth2.googleapis.com/token \
+          set -euo pipefail
+          TOKEN_JSON=$(curl -fsS -X POST https://oauth2.googleapis.com/token \
             -d client_id="$CLIENT_ID" \
             -d client_secret="$CLIENT_SECRET" \
             -d refresh_token="$REFRESH_TOKEN" \
-            -d grant_type=refresh_token | jq -r .access_token)
+            -d grant_type=refresh_token)
+          ACCESS_TOKEN=$(printf '%s' "$TOKEN_JSON" | jq -r .access_token)
+          if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
+            echo "Failed to obtain access token from Chrome Web Store OAuth credentials"
+            echo "$TOKEN_JSON" | jq -c '{error, error_description}' || true
+            exit 1
+          fi
           STORE_VERSION=$(curl -fsS \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
             "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID?projection=DRAFT" \
             | jq -r '.crxVersion // empty')
-          MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
+          MANIFEST_VERSION="${{ steps.ver.outputs.version }}"
           echo "Store version: ${STORE_VERSION:-<none>} / Manifest version: $MANIFEST_VERSION"
           if [ -n "$STORE_VERSION" ] && [ "$STORE_VERSION" = "$MANIFEST_VERSION" ]; then
             echo "Store already has $STORE_VERSION — skipping upload."
@@ -78,11 +172,12 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.ver.outputs.tag }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "Release $GITHUB_REF_NAME already exists — skipping."
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists — skipping."
           else
-            gh release create "$GITHUB_REF_NAME" dist/*.zip \
-              --title "$GITHUB_REF_NAME" \
+            gh release create "$RELEASE_TAG" dist/*.zip \
+              --title "$RELEASE_TAG" \
               --generate-notes
           fi
