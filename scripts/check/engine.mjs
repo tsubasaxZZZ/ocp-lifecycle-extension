@@ -3,6 +3,10 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const lib = require("../../src/lib.js");
 
+// Transient SPA/CDN blips on access.redhat.com should not open structure-check
+// issues. Real page-contract regressions still fail after retries.
+const MAX_ATTEMPTS = 3;
+
 export async function runDomChecks(targets) {
   const errors = [];
   const { chromium } = await import("playwright");
@@ -73,12 +77,41 @@ function cellDeadline(cell) {
   return lib.parseDeadlineFromText(cell.text);
 }
 
-async function checkDomTarget(browser, target) {
+function evaluateTarget(data, target, tag, pageUrl) {
   const errors = [];
   const check = makeCheck(errors);
-  const tag = `[${target.name}]`;
-  console.log(`${tag} rendering ${target.url}`);
+  const urlNote = pageUrl ? ` (url: ${pageUrl})` : "";
 
+  const lifecycleTables = data.headerRows.filter((h) => lib.isLifecycleHeaderSet(h));
+  check(lifecycleTables.length >= target.minTables,
+    `${tag} expected >= ${target.minTables} lifecycle tables, found ${lifecycleTables.length}. Header rows: ${JSON.stringify(data.headerRows.filter((h) => h.length > 0).slice(0, 10))}${urlNote}`);
+
+  const labels = new Set(data.labelCells.map((c) => c.label));
+  for (const expected of target.expectedLabels) {
+    check(labels.has(expected),
+      `${tag} expected cell label "${expected}" not found. Labels seen: ${JSON.stringify([...labels].slice(0, 20))}${urlNote}`);
+  }
+
+  let deadlineCells = 0;
+  let highlightable = 0;
+  for (const cell of data.labelCells) {
+    if (cellDeadline(cell)) {
+      deadlineCells += 1;
+      if (!lib.isExcludedLabel(cell.label)) highlightable += 1;
+    }
+  }
+  check(data.labelCells.length >= target.minLabelCells,
+    `${tag} too few labelled cells: ${data.labelCells.length}${urlNote}`);
+  check(deadlineCells >= target.minDeadlineCells,
+    `${tag} too few cells with extractable deadlines: ${deadlineCells}${urlNote}`);
+  check(highlightable >= target.minHighlightable,
+    `${tag} too few highlightable cells: ${highlightable}${urlNote}`);
+
+  return { errors, lifecycleTables, deadlineCells, highlightable, labelCount: data.labelCells.length };
+}
+
+async function attemptDomTarget(browser, target) {
+  const tag = `[${target.name}]`;
   const context = await browser.newContext({
     userAgent:
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -89,52 +122,61 @@ async function checkDomTarget(browser, target) {
     ]);
     const page = await context.newPage();
     await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 60000 });
+
+    // Wait for lifecycle-specific labels, not merely any labelled cells.
+    // Unrelated portal tables (e.g. support contact hours) also use
+    // data-label/headers and used to satisfy a cell-count-only wait.
+    // Pass an expression string so Playwright evaluates it without needing
+    // new Function (portal CSP can block that).
+    const expectedLabelsJson = JSON.stringify(target.expectedLabels);
     await page
       .waitForFunction(
-        `(${collectPageData.toString()})().labelCells.length >= ${target.minLabelCells}`,
+        `(function () {
+          var data = (${collectPageData.toString()})();
+          if (data.labelCells.length < ${target.minLabelCells}) return false;
+          var labels = {};
+          data.labelCells.forEach(function (c) { labels[c.label] = true; });
+          return ${expectedLabelsJson}.every(function (l) { return labels[l]; });
+        })()`,
         null,
         { timeout: 45000 }
       )
       .catch(() => {});
 
     const data = await page.evaluate(collectPageData);
-
-    const lifecycleTables = data.headerRows.filter((h) => lib.isLifecycleHeaderSet(h));
-    check(lifecycleTables.length >= target.minTables,
-      `${tag} expected >= ${target.minTables} lifecycle tables, found ${lifecycleTables.length}. Header rows: ${JSON.stringify(data.headerRows.filter((h) => h.length > 0).slice(0, 10))}`);
-
-    const labels = new Set(data.labelCells.map((c) => c.label));
-    for (const expected of target.expectedLabels) {
-      check(labels.has(expected),
-        `${tag} expected cell label "${expected}" not found. Labels seen: ${JSON.stringify([...labels].slice(0, 20))}`);
-    }
-
-    let deadlineCells = 0;
-    let highlightable = 0;
-    for (const cell of data.labelCells) {
-      if (cellDeadline(cell)) {
-        deadlineCells += 1;
-        if (!lib.isExcludedLabel(cell.label)) highlightable += 1;
-      }
-    }
-    check(data.labelCells.length >= target.minLabelCells,
-      `${tag} too few labelled cells: ${data.labelCells.length}`);
-    check(deadlineCells >= target.minDeadlineCells,
-      `${tag} too few cells with extractable deadlines: ${deadlineCells}`);
-    check(highlightable >= target.minHighlightable,
-      `${tag} too few highlightable cells: ${highlightable}`);
+    const pageUrl = page.url();
+    const result = evaluateTarget(data, target, tag, pageUrl);
 
     if (typeof target.extraChecks === "function") {
-      await target.extraChecks({ data, check, tag, lib });
+      const check = makeCheck(result.errors);
+      await target.extraChecks({ data, check, tag, lib, pageUrl });
     }
 
-    if (errors.length === 0) {
-      console.log(
-        `${tag} ok (${lifecycleTables.length} tables, ${data.labelCells.length} labelled cells, ${deadlineCells} deadline cells, ${highlightable} highlightable)`
-      );
-    }
+    return result;
   } finally {
     await context.close();
   }
-  return errors;
+}
+
+async function checkDomTarget(browser, target) {
+  const tag = `[${target.name}]`;
+  console.log(`${tag} rendering ${target.url}`);
+
+  let last = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    last = await attemptDomTarget(browser, target);
+    if (last.errors.length === 0) {
+      console.log(
+        `${tag} ok (${last.lifecycleTables.length} tables, ${last.labelCount} labelled cells, ${last.deadlineCells} deadline cells, ${last.highlightable} highlightable)`
+      );
+      return [];
+    }
+    if (attempt < MAX_ATTEMPTS) {
+      console.log(`${tag} attempt ${attempt}/${MAX_ATTEMPTS} failed; retrying…`);
+      console.log(last.errors.map((e) => `  - ${e}`).join("\n"));
+    }
+  }
+
+  console.log(`${tag} failed after ${MAX_ATTEMPTS} attempts`);
+  return last.errors;
 }

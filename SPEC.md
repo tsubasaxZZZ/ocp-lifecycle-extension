@@ -73,8 +73,8 @@ Red Hat 各製品のライフサイクルページにある「Life Cycle Dates�
   テキスト内に複数の日付がある場合は最後尾=終了日を採用。
   判定はユーザーのローカルタイムゾーンの「今日」基準
 - フォールバックとして、Shadow DOM を使わない素の table(ヘッダーテキスト判定)にも対応
-- 描画元データは Red Hat lifecycle API(`/product-life-cycles/api/v1/products`)だが、
-  **拡張も構造チェックも参照するのは描画後の DOM のみ**
+- 描画元データは Red Hat lifecycle API(`/product-life-cycles/api/v2/products`、
+  v1 も併存)だが、**拡張も構造チェックも参照するのは描画後の DOM のみ**
 
 ## エッジケース
 
@@ -118,7 +118,7 @@ test/release.test.js     リリースヘルパーのユニットテスト
 |---|---|---|
 | `ci.yml` | push / PR | テスト → manifest・ロケール検証 → zip ビルド → artifact |
 | `release.yml` | **手動 (`workflow_dispatch`)** / `v*` タグ push | `action=release`: bump→test→commit&tag→build→store→GitHub Release。`action=publish`: 既存 tag を公開するだけ（再実行用、bump なし）。手動 `v*` タグ push も publish と同じ公開処理 |
-| `structure-check.yml` | 毎日 21:00 UTC (06:00 JST) / 手動 | Playwright で描画した実ページ(OCP・OpenShift Operators は**英語・日本語の両方**、全製品ページ)の表構造が拡張の想定と一致するか検証。**不一致なら fail し、Issue を自動起票** |
+| `structure-check.yml` | 毎日 21:00 UTC (06:00 JST) / 手動 | Playwright で描画した実ページ(OCP・OpenShift Operators は**英語・日本語の両方**、全製品ページ)の表構造が拡張の想定と一致するか検証。待機はライフサイクル固有ラベル(例: General availability)を見る。SPA/CDN の一時失敗向けに対象ページごとに最大3回リトライ。**不一致なら fail し、Issue を自動起票** |
 
 ## リリース手順
 
