@@ -63,4 +63,6 @@ export const DOM_TARGETS = [
     minDeadlineCells: 500,
     minHighlightable: 500
   }
+  // /groups wiki pages are login-walled; their plain HTML tables (section
+  // header rows, no data-label) are covered by test/content.dom.test.js.
 ];

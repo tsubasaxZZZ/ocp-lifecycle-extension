@@ -164,6 +164,18 @@ test("isGaLabel: matches GA headers and labels in both languages", () => {
   assert.equal(lib.isGaLabel("End of Life"), false);
 });
 
+test("isSectionHeaderRow: group wiki phase rows", () => {
+  assert.ok(lib.isSectionHeaderRow(["Full Support", "", "", ""]));
+  assert.ok(lib.isSectionHeaderRow(["Maintenance Support", "", ""]));
+  assert.ok(lib.isSectionHeaderRow(["フルサポート", "", "", ""]));
+  assert.ok(lib.isSectionHeaderRow(["  Maintenance Support  ", "  ", ""]));
+  assert.equal(lib.isSectionHeaderRow(["2.17", "Aligned", "4.20, 4.21", "June 18, 2026"]), false);
+  assert.equal(lib.isSectionHeaderRow(["Full Support"]), false);
+  assert.equal(lib.isSectionHeaderRow(["", "", ""]), false);
+  assert.equal(lib.isSectionHeaderRow([]), false);
+  assert.equal(lib.isSectionHeaderRow(null), false);
+});
+
 test("isLifecycleHeaderSet: rejects unrelated tables", () => {
   assert.equal(lib.isLifecycleHeaderSet(["Software Classification", "Provided Tools"]), false);
   assert.equal(lib.isLifecycleHeaderSet([]), false);

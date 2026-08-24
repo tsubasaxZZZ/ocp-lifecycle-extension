@@ -28,6 +28,10 @@ Non-obvious notes:
   Then visit `https://access.redhat.com/support/policy/updates/openshift` and
   scroll to the "Life Cycle Dates" table — cells should be color-highlighted
   with remaining-days badges and a legend above the table.
+- Group wiki pages (`https://access.redhat.com/groups...`) require a Red Hat
+  login, so they cannot be live-checked here. Coverage is the jsdom fixture in
+  `test/content.dom.test.js` that mirrors the pasted HTML tables (section
+  header rows, extra columns such as Tier / OpenShift Compatibility).
 - The lifecycle table renders dynamically inside the `<plcc-table>` Lit
   component's Shadow DOM; after loading the extension, refresh the page and wait
   a few seconds for highlighting to appear.

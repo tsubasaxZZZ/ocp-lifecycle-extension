@@ -14,9 +14,10 @@ which versions are approaching end of support.
 
 Open the OpenShift life cycle page, the
 [all-products life cycle page](https://access.redhat.com/product-life-cycles)
-(with any products you add to it), or any other per-product life cycle page
-under `access.redhat.com/support/policy/updates/` — every date cell is
-highlighted by how close the deadline is:
+(with any products you add to it), any other per-product life cycle page
+under `access.redhat.com/support/policy/updates/`, or a Customer Portal
+[group page](https://access.redhat.com/groups) that contains a life cycle
+table — every date cell is highlighted by how close the deadline is:
 
 | Color | Meaning (default) |
 |---|---|
@@ -33,6 +34,9 @@ highlighted by how close the deadline is:
 - Date-range cells ("May 20, 2025 to May 31, 2030") are judged by their end
   date; ranges ending in "Ongoing" are left unhighlighted
 - Works with both the English and Japanese display of the pages
+- On group pages, HTML tables that use *Full Support* / *Maintenance Support*
+  (and similar) as section rows inside the table body are highlighted the same
+  way; those label rows themselves are left as-is
 
 ## Installation
 
@@ -56,9 +60,9 @@ The extension UI follows your browser's language (English / Japanese).
 
 ## Privacy
 
-The extension reads nothing but the life cycle page itself, makes no network
-requests, and collects no data. The only permission it uses is `storage`,
-for saving your settings.
+The extension reads nothing but the life cycle pages and Customer Portal group
+pages it is allowed to run on, makes no network requests, and collects no data.
+The only permission it uses is `storage`, for saving your settings.
 
 ## For developers
 

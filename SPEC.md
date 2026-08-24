@@ -11,6 +11,8 @@ Red Hat 各製品のライフサイクルページにある「Life Cycle Dates�
   - `https://access.redhat.com/support/policy/updates/*`(製品個別ページ。OpenShift含む。
     ライフサイクル表(GA列)が無いページでは何もしない——安全性はURLでなく検知ロジックが担保)
   - `https://access.redhat.com/product-life-cycles*`(全製品ページ。表示中の全製品の表を装飾)
+  - `https://access.redhat.com/groups*`(カスタマーポータルのグループ/wikiページ。
+    貼り付けられた素の HTML ライフサイクル表を装飾。ログイン壁のため構造チェック対象外)
   - 言語切替は `rh_locale` Cookie で行われURLは不変。英語・日本語表示の両方に対応
     (日本語はヘッダー・`data-label`・日付形式がローカライズされる)
 - ブラウザ: Chrome (Manifest V3)。Edge は同一コードで動作見込み。Firefox は将来対応
@@ -58,7 +60,10 @@ Red Hat 各製品のライフサイクルページにある「Life Cycle Dates�
 
 - 表は **Lit製Web Component `<plcc-table>` の Shadow DOM 内に動的描画される**。
   OpenShift / 全製品ページは単一テーブル(thead + tbody)、Operators ページは
-  素の table など、製品により内部構成が異なる
+  素の table など、製品により内部構成が異なる。
+  グループページは wiki の素の HTML table(data-label なし、製品ごとに複数表)。
+  tbody 内に *Full Support* / *Maintenance Support* などの区分行
+  (先頭セルだけラベル、残り空)が挟まることがあり、区分行はスキップする
 - コンテンツスクリプトは **Shadow Root を再帰探索**して表を発見する
 - 列の特定はセルの **`data-label` / `headers` 属性**(例: `data-label="Full support"`、
   日本語表示では `フルサポート`)で行う。cellIndexやサイトのクラス名に依存しない
@@ -72,13 +77,19 @@ Red Hat 各製品のライフサイクルページにある「Life Cycle Dates�
   `March 17, 2026` / `Mar 17, 2026` / `09 Mar 2026` / `2026-03-17` / `2026年3月17日`。
   テキスト内に複数の日付がある場合は最後尾=終了日を採用。
   判定はユーザーのローカルタイムゾーンの「今日」基準
-- フォールバックとして、Shadow DOM を使わない素の table(ヘッダーテキスト判定)にも対応
+- フォールバックとして、Shadow DOM を使わない素の table(ヘッダーテキスト判定)にも対応。
+  labelled セル経路と素の table 経路は排他にしない——グループ wiki 表は
+  GA ヘッダーを持つため labelled 経路に入るが data-label が無く、排他だと
+  素の table 経路が走らない
 - 描画元データは Red Hat lifecycle API(`/product-life-cycles/api/v1/products`)だが、
   **拡張も構造チェックも参照するのは描画後の DOM のみ**
 
 ## エッジケース
 
-- 表が複数ある場合: ライフサイクルのヘッダー構成を持つ表のみ対象
+- 表が複数ある場合: ライフサイクルのヘッダー構成を持つ表のみ対象。
+  グループページのように製品ごとの表が並ぶ場合は表ごとに凡例を付ける
+- 区分行(*Full Support* など先頭セルのみの行): 日付が取れないのでスキップ。
+  明示的に行全体を除外し、空セルや Version 列の誤装飾を防ぐ
 - SPA的な再描画で装飾が消える場合: Observer を維持して再適用(自前DOM変更による
   無限ループはノード判定で防止)
 - ページ構造変更でパース不能: 何もしない(エラーでページを壊さない)
@@ -118,7 +129,7 @@ test/release.test.js     リリースヘルパーのユニットテスト
 |---|---|---|
 | `ci.yml` | push / PR | テスト → manifest・ロケール検証 → zip ビルド → artifact |
 | `release.yml` | **手動 (`workflow_dispatch`)** / `v*` タグ push | `action=release`: bump→test→commit&tag→build→store→GitHub Release。`action=publish`: 既存 tag を公開するだけ（再実行用、bump なし）。手動 `v*` タグ push も publish と同じ公開処理 |
-| `structure-check.yml` | 毎日 21:00 UTC (06:00 JST) / 手動 | Playwright で描画した実ページ(OCP・OpenShift Operators は**英語・日本語の両方**、全製品ページ)の表構造が拡張の想定と一致するか検証。**不一致なら fail し、Issue を自動起票** |
+| `structure-check.yml` | 毎日 21:00 UTC (06:00 JST) / 手動 | Playwright で描画した実ページ(OCP・OpenShift Operators は**英語・日本語の両方**、全製品ページ)の表構造が拡張の想定と一致するか検証。**不一致なら fail し、Issue を自動起票**。`/groups` はログイン必須のため対象外——jsdom フィクスチャ(`test/content.dom.test.js`)で契約を固定する |
 
 ## リリース手順
 
