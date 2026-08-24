@@ -71,6 +71,19 @@
     return null;
   }
 
+  function rowCellTexts(row) {
+    return Array.prototype.map.call(row.children, function (c) {
+      return (c.textContent || "").trim();
+    });
+  }
+
+  function dataRows(table) {
+    var tbody = table.querySelector("tbody");
+    if (tbody) return Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+    var all = table.querySelectorAll("tr");
+    return Array.prototype.slice.call(all, 1);
+  }
+
   function ensureStyle(root) {
     var host = root === document ? (document.head || document.documentElement) : root;
     if (host.querySelector && host.querySelector("style[data-ocp-lh]")) return;
@@ -158,6 +171,8 @@
     var gaBadges = 0;
     var cells = root.querySelectorAll("td[data-label], td[headers]");
     for (var i = 0; i < cells.length; i++) {
+      var row = cells[i].parentElement;
+      if (row && OCPLH.isSectionHeaderRow(rowCellTexts(row))) continue;
       var label = cellLabel(cells[i]);
       if (OCPLH.isGaLabel(label)) {
         if (decorateGaCell(cells[i], today)) gaBadges++;
@@ -180,10 +195,11 @@
       var headers = headerTexts(table);
       if (!OCPLH.isLifecycleHeaderSet(headers)) continue;
 
-      var rows = table.querySelectorAll("tbody tr");
+      var rows = dataRows(table);
       var decorated = 0;
       for (var r = 0; r < rows.length; r++) {
         var cells = rows[r].children;
+        if (OCPLH.isSectionHeaderRow(rowCellTexts(rows[r]))) continue;
         for (var c = 0; c < cells.length; c++) {
           if (cells[c].tagName !== "TD") continue;
           if (cells[c].hasAttribute("data-label") || cells[c].hasAttribute("headers")) continue;
@@ -244,8 +260,11 @@
     });
     roots.forEach(function (root) {
       observeRoot(root);
-      var handled = decorateLabelledCells(root, today);
-      if (!handled) decoratePlainTables(root, today);
+      // Labelled cells (plcc-table / Operators) and plain tables (group wiki
+      // pages) can share a root. A lifecycle header without data-label must
+      // not block the plain-table path.
+      decorateLabelledCells(root, today);
+      decoratePlainTables(root, today);
     });
   }
 

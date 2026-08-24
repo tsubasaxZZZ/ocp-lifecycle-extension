@@ -296,6 +296,171 @@ test("GA badge: absent by default", async () => {
   );
 });
 
+test("Customer Portal groups page: plain wiki tables with section header rows are decorated", async () => {
+  setupPage(
+    "https://access.redhat.com/groups/example",
+    `<div id="ph"></div>
+     <table><tr><th>Topic</th><th>Notes</th></tr>
+       <tr><td>Standup</td><td>Jan 1, 2020</td></tr></table>`
+  );
+  await sleep(50);
+
+  document.getElementById("ph").innerHTML = `
+    <h2>Red Hat Advanced Cluster Management for Kubernetes</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Version</th><th>Tier</th><th>OpenShift Compatibility</th>
+          <th>General availability</th><th>Full support</th><th>Maintenance support</th>
+          <th>Extended update support</th><th>Extended update support Term 2</th>
+          <th>Extended update support Term 3</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><em>Full Support</em></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+        </tr>
+        <tr>
+          <td>2.17</td><td>Aligned</td><td>4.20, 4.21, 4.22</td>
+          <td>June 18, 2026</td><td>January 01, 2099</td><td>December 31, 2099</td>
+          <td>June 30, 2099</td><td>June 30, 2099</td><td>N/A</td>
+        </tr>
+        <tr>
+          <td>2.14</td><td>Aligned</td><td>4.17, 4.18, 4.19, 4.20</td>
+          <td>August 01, 2025</td><td>January 01, 2020</td><td>February 24, 2099</td>
+          <td>N/A</td><td>N/A</td><td>N/A</td>
+        </tr>
+        <tr>
+          <td><em>Maintenance Support</em></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+        </tr>
+        <tr>
+          <td>2.13</td><td>Aligned</td><td>4.16, 4.17, 4.18, 4.19</td>
+          <td>March 20, 2025</td><td>April 17, 2020</td><td>September 18, 2099</td>
+          <td>February 12, 2099</td><td>February 13, 2099</td><td>N/A</td>
+        </tr>
+      </tbody>
+    </table>
+    <h2>Red Hat OpenShift Container Platform</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Version</th><th>General availability</th><th>Full support</th>
+          <th>Maintenance support</th><th>Extended update support</th>
+          <th>Extended update support Term 2</th><th>Extended update support Term 3</th>
+          <th>Extended life phase</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><em>Full Support</em></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+        </tr>
+        <tr>
+          <td>4.22</td><td>June 09, 2026</td><td>December 31, 2099</td>
+          <td>December 31, 2099</td><td>June 30, 2099</td><td>June 30, 2099</td>
+          <td>N/A</td><td>N/A</td>
+        </tr>
+        <tr>
+          <td><em>Maintenance Support</em></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+        </tr>
+        <tr>
+          <td>4.20</td><td>October 21, 2025</td><td>May 03, 2020</td>
+          <td>April 21, 2099</td><td>October 21, 2099</td><td>October 21, 2099</td>
+          <td>N/A</td><td>N/A</td>
+        </tr>
+      </tbody>
+    </table>`;
+  await sleep(600);
+
+  const acm = document.querySelectorAll("#ph table")[0];
+  const ocp = document.querySelectorAll("#ph table")[1];
+  const acmRows = [...acm.querySelectorAll("tbody tr")];
+  const section = acmRows[0];
+  assert.equal(
+    [...section.querySelectorAll(".ocp-lh-cell")].length,
+    0,
+    "Full Support section row must stay undecorated"
+  );
+  assert.equal(
+    [...acmRows[3].querySelectorAll(".ocp-lh-cell")].length,
+    0,
+    "Maintenance Support section row must stay undecorated"
+  );
+
+  const row217 = acmRows[1];
+  const cells217 = [...row217.children];
+  assert.equal([...cells217[0].classList].join(" "), "", "version cell skipped");
+  assert.equal([...cells217[1].classList].join(" "), "", "Tier skipped");
+  assert.equal([...cells217[2].classList].join(" "), "", "OpenShift Compatibility skipped");
+  assert.equal([...cells217[3].classList].join(" "), "", "GA column skipped");
+  assert.match([...cells217[4].classList].join(" "), /ocp-lh-ok/, "2.17 full support far-future");
+  assert.equal([...cells217[8].classList].join(" "), "", "N/A skipped");
+
+  const row214 = acmRows[2];
+  assert.match([...row214.children[4].classList].join(" "), /ocp-lh-expired/, "2.14 full support expired");
+  assert.match([...row214.children[4].classList].join(" "), /ocp-lh-strike/);
+  assert.match(row214.children[4].querySelector(".ocp-lh-badge").textContent, /終了済み\(\d+日前\)/);
+
+  const row213 = acmRows[4];
+  assert.match([...row213.children[4].classList].join(" "), /ocp-lh-expired/, "2.13 full support expired");
+  assert.match([...row213.children[5].classList].join(" "), /ocp-lh-ok/, "2.13 maintenance far-future");
+
+  const ocpRows = [...ocp.querySelectorAll("tbody tr")];
+  assert.equal([...ocpRows[0].querySelectorAll(".ocp-lh-cell")].length, 0, "OCP section row skipped");
+  assert.match([...ocpRows[1].children[2].classList].join(" "), /ocp-lh-ok/, "4.22 full support decorated");
+  assert.match([...ocpRows[3].children[2].classList].join(" "), /ocp-lh-expired/, "4.20 full support expired");
+
+  assert.equal(document.querySelectorAll(".ocp-lh-legend").length, 2, "legend per decorated table");
+  assert.ok(acm.previousElementSibling.classList.contains("ocp-lh-legend"));
+  assert.ok(ocp.previousElementSibling.classList.contains("ocp-lh-legend"));
+  assert.ok(document.querySelector("style[data-ocp-lh]"), "style injected");
+  assert.equal(document.querySelector("body > table .ocp-lh-cell"), null, "unrelated table untouched");
+});
+
+test("Customer Portal groups page: labelled lifecycle table does not block a sibling plain wiki table", async () => {
+  setupPage("https://access.redhat.com/groups/mixed", `<div id="ph"></div>`);
+  await sleep(50);
+
+  document.getElementById("ph").innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Version</th><th>General availability</th><th>Full support</th>
+      </tr></thead>
+      <tbody><tr>
+        <td data-label="Version">4.21</td>
+        <td data-label="General availability">09 Mar 2026</td>
+        <td data-label="Full support">01 Jan 2099</td>
+      </tr></tbody>
+    </table>
+    <table>
+      <thead><tr>
+        <th>Version</th><th>General availability</th><th>Full support</th>
+      </tr></thead>
+      <tbody>
+        <tr><td><em>Full Support</em></td><td></td><td></td></tr>
+        <tr><td>1.0</td><td>August 26, 2024</td><td>January 01, 2099</td></tr>
+      </tbody>
+    </table>`;
+  await sleep(600);
+
+  const tables = document.querySelectorAll("#ph table");
+  assert.match(
+    [...tables[0].querySelector('td[data-label="Full support"]').classList].join(" "),
+    /ocp-lh-ok/,
+    "labelled table still decorated"
+  );
+  const plainRow = tables[1].querySelectorAll("tbody tr")[1];
+  assert.match(
+    [...plainRow.children[2].classList].join(" "),
+    /ocp-lh-ok/,
+    "plain wiki table decorated even when a labelled table is present"
+  );
+  assert.equal(
+    [...tables[1].querySelectorAll("tbody tr")[0].querySelectorAll(".ocp-lh-cell")].length,
+    0,
+    "section header row skipped on the plain table"
+  );
+});
+
 test("All-products page: table with no parseable deadlines gets no legend", async () => {
   setupPage("https://access.redhat.com/product-life-cycles", `<div id="ph"></div>`);
   await sleep(50);

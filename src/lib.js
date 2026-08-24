@@ -135,6 +135,17 @@
     return GA_RE.test(text || "");
   }
 
+  // Group wiki tables put phase labels (*Full Support*, *Maintenance Support*)
+  // in a tbody row: first cell has the label, the rest are empty. Not a version.
+  function isSectionHeaderRow(cellTexts) {
+    if (!cellTexts || cellTexts.length < 2) return false;
+    if (!(cellTexts[0] || "").trim()) return false;
+    for (var i = 1; i < cellTexts.length; i++) {
+      if ((cellTexts[i] || "").trim()) return false;
+    }
+    return true;
+  }
+
   function sanitizeSettings(raw) {
     var s = Object.assign({}, DEFAULTS, raw || {});
     s.dangerDays = clampInt(s.dangerDays, 1, 3650, DEFAULTS.dangerDays);
@@ -164,6 +175,7 @@
     isExcludedColumn: isExcludedColumn,
     isExcludedLabel: isExcludedLabel,
     isGaLabel: isGaLabel,
+    isSectionHeaderRow: isSectionHeaderRow,
     sanitizeSettings: sanitizeSettings
   };
 

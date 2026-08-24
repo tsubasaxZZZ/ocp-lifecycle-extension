@@ -4,8 +4,9 @@ Guidance for AI assistants (and humans) working in this repository.
 
 ## Project overview
 
-Chrome extension (Manifest V3) that color-codes the Life Cycle Dates table on
-https://access.redhat.com/support/policy/updates/openshift by deadline proximity.
+Chrome extension (Manifest V3) that color-codes Life Cycle Dates tables on
+Red Hat pages (product life cycle pages and Customer Portal `/groups` wiki
+tables) by deadline proximity.
 
 ## Documentation rules
 
@@ -30,7 +31,12 @@ https://access.redhat.com/support/policy/updates/openshift by deadline proximity
 - The lifecycle table lives inside the **Shadow DOM** of the `<plcc-table>` Lit
   component. Any DOM lookup must recursively traverse shadow roots.
 - Column identification uses each cell's `data-label` / `headers` attributes —
-  never rely on cell index or site CSS class names.
+  never rely on cell index or site CSS class names. Plain HTML tables without
+  those attributes (Customer Portal `/groups` wiki pages) fall back to thead
+  text. Section-header rows (phase label in the first cell, remaining cells
+  empty) are skipped.
+- Labelled-cell decoration and plain-table decoration both run; a lifecycle
+  header without `data-label` must not block the plain-table path.
 - Styles must be injected as `<style data-ocp-lh>` into each shadow root;
   a manifest-declared CSS file cannot reach Shadow DOM.
 - `src/lib.js` is pure logic shared by the content script, options page, unit

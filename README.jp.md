@@ -14,8 +14,10 @@ For the English version, see [README.md](README.md).
 
 OpenShift のライフサイクルページ、
 [全製品のライフサイクルページ](https://access.redhat.com/product-life-cycles)
-(ページに追加した任意の製品)、および
-`access.redhat.com/support/policy/updates/` 配下の製品個別ライフサイクルページを開くと、
+(ページに追加した任意の製品)、
+`access.redhat.com/support/policy/updates/` 配下の製品個別ライフサイクルページ、
+およびライフサイクル表を含むカスタマーポータルの
+[グループページ](https://access.redhat.com/groups) を開くと、
 各日付セルが期限の近さで色分けされます:
 
 | 色 | 意味(デフォルト) |
@@ -31,6 +33,8 @@ OpenShift のライフサイクルページ、
 - 期間セル(「May 20, 2025 to May 31, 2030」)は終了日で判定。
   「Ongoing」で終わる期間は色分けしない
 - ページの英語表示・日本語表示の両方に対応
+- グループページでは、表の途中に *Full Support* / *Maintenance Support*
+  (など)の区分行がある HTML 表も同じように色分けする。区分行そのものは触れない
 
 ## インストール
 
@@ -54,7 +58,8 @@ OpenShift のライフサイクルページ、
 
 ## プライバシー
 
-本拡張はライフサイクルページ以外を読み取らず、ネットワーク通信も行わず、
+本拡張は許可されたライフサイクルページおよびカスタマーポータルの
+グループページ以外を読み取らず、ネットワーク通信も行わず、
 データ収集もしません。使用する権限は設定保存のための `storage` のみです。
 
 ## 開発者向け
